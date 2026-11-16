@@ -424,7 +424,20 @@ const D = (() => {
     return out;
   }
 
-  return { pad, sum, mOK, dOK, dim, shift, dateAt, addM, diff, days, today, dates, schedule, liquidity, loanEvents, loanAt, position, activeIn, month, project };
+  /* Các tháng trước ngày nhập số dư: vẫn xem được khung. Không biết số dư thật nên dòng tiền tính từ 0đ đầu tháng
+     (cuối tháng = free float, đáy = tiền cần có sẵn đầu tháng). Bắt đầu từ tháng sớm nhất có dữ liệu, tối đa 24 tháng. */
+  function past(s) {
+    const k0 = s.openDate.slice(0, 7), min = shift(k0, -24);
+    const ks = [...s.incomes, ...s.living.items].map(x => x.from).concat(s.loans.map(l => l.start.slice(0, 7))).filter(k => k && k < k0);
+    if (!ks.length) return [];
+    const out = [], first = ks.reduce((a, b) => a < b ? a : b);
+    for (let k = first < min ? min : first; k < k0; k = shift(k, 1)) {
+      const m = month(s, k, 0, 1); m.past = true; m.cum = m.end; m.pos = position(s, k); out.push(m);
+    }
+    return out;
+  }
+
+  return { past, pad, sum, mOK, dOK, dim, shift, dateAt, addM, diff, days, today, dates, schedule, liquidity, loanEvents, loanAt, position, activeIn, month, project };
 })();
 if (typeof module === 'object') module.exports = D;
 </script>
@@ -654,7 +667,7 @@ ${isEmpty() ? `<div class="banner"><span><b>Khung đang trống.</b> Nhập số
 
 /* ----- Giao diện: phần kết quả (vẽ lại sau mỗi lần gõ) ----- */
 function draw() {
-  const P = D.project(S), m = cur = P.find(x => x.k === S.sel) || P[0];
+  const P = D.project(S), m = cur = P.find(x => x.k === S.sel) || D.past(S).find(x => x.k === S.sel) || P[0];
   const loans = S.loans.map(l => {
     const sc = D.schedule(l);
     return { l, sc, at: D.loanAt(l, m.k, sc), lq: D.liquidity(l, sc), ev: D.loanEvents(l, m.k, sc).filter(e => e.cat === 'principal' || e.cat === 'interest' || e.cat === 'collect') };
@@ -704,11 +717,11 @@ function drawFigs(m, loans) {
     <div class="wf">${steps.map(([, a, b, c]) => `<div><i style="bottom:${y(Math.min(a, b))}%;height:${Math.max(2, Math.abs(y(b) - y(a)))}%;background:${c}"></i></div>`).join('')}</div>
     <div class="wfl">${steps.map(s => `<span>${s[0]}</span>`).join('')}</div>`;
 
-  $('#figs').innerHTML = `<div class="card fig hero"><span class="cap">Free float</span><small>${mLong(m.k)}</small><span class="n ${negOnly(m.free)}">${money(m.free)}</span></div>`
+  $('#figs').innerHTML = `<div class="card fig hero"><span class="cap">Free float</span><small>${mLong(m.k)}${m.past ? ' · đã qua' : ''}</small><span class="n ${negOnly(m.free)}">${money(m.free)}</span></div>`
     + card('Trả nợ / Thu', ring, `Cứ 100đ thu vào, ${m.inflow ? dec(share * 100, 0) : '—'}đ đi trả nợ`)
     + card('M/X + i (%)', rate, base ? `Tháng này phải trả ${money(m.debt)}\ntrên ${money(base)} gốc của các khoản đến hạn\nM/x = gốc ${money(m.principal)} · i = lãi ${money(m.interest)}` : 'Không có khoản đến hạn')
-    + card('Đáy số dư', low, `Số dư tiền mặt thấp nhất trong tháng${m.from > 1 ? `, tính từ ngày ${m.from}` : ''}`)
-    + card('Số dư cuối tháng', wf, `Tiền mặt thực tế cuối tháng (khác free float)\nĐầu kỳ ${money(m.opening)}\n+ Thu ${money(cin)}${vay ? `\n+ Tiền vay về ${money(vay)}` : ''}\n− Chi & trả nợ ${money(out)}\n= ${money(m.end)}`);
+    + card('Đáy số dư', low, m.past ? 'Tháng đã qua, trước ngày nhập số dư: tính như đầu tháng có 0đ.\nĐáy âm = số tiền cần có sẵn đầu tháng' : `Số dư tiền mặt thấp nhất trong tháng${m.from > 1 ? `, tính từ ngày ${m.from}` : ''}`)
+    + card(m.past ? 'Ròng cuối tháng' : 'Số dư cuối tháng', wf, `${m.past ? 'Tháng đã qua, tính từ 0đ đầu tháng' : 'Tiền mặt thực tế cuối tháng (khác free float)'}\nĐầu kỳ ${money(m.opening)}\n+ Thu ${money(cin)}${vay ? `\n+ Tiền vay về ${money(vay)}` : ''}\n− Chi & trả nợ ${money(out)}\n= ${money(m.end)}`);
 }
 
 /* Cột Thu (mint) chứa cột chi xếp chồng; phần mint lộ ra = free float; chấm đỏ = có ngày số dư âm trong tháng. */
@@ -743,8 +756,9 @@ function drawMonths(P, m) {
 
 function drawDay(m) {
   const negDays = m.days.filter(d => d.end < 0).length, mm = m.k.slice(5);
-  $('#dayTitle').textContent = `Trong tháng ${+mm}` + (m.from > 1 ? ` · từ ngày ${m.from}` : '');
-  $('#dayTag').className = 'tag ' + (negDays ? 'bad' : ''); $('#dayTag').textContent = negDays ? `${negDays} ngày âm` : 'Không có ngày âm';
+  $('#dayTitle').textContent = `Trong tháng ${+mm}` + (m.past ? ' · đã qua, tính từ 0đ' : m.from > 1 ? ` · từ ngày ${m.from}` : '');
+  $('#dayTag').className = 'tag ' + (m.past ? '' : negDays ? 'bad' : '');
+  $('#dayTag').textContent = m.past ? 'Trước ngày nhập số dư' : negDays ? `${negDays} ngày âm` : 'Không có ngày âm';
   $('#dayChips').innerHTML = `<span class="chip">${m.from > 1 ? `Ngày ${m.from}` : 'Đầu tháng'}<b>${short(m.opening)}</b></span>
     <span class="chip">Thấp nhất<b class="${negOnly(m.low.end)}">${short(m.low.end)}</b> · ngày ${m.low.day}</span>
     <span class="chip">Cuối tháng<b class="${negOnly(m.end)}">${short(m.end)}</b></span>`;
@@ -808,7 +822,7 @@ function drawPos(P, m) {
       ${short4('Đang vay', money(p.borrow), `${p.nB} khoản · lãi còn ${short(p.intPay)}`)}
       ${short4('Cho vay', money(p.lend), `${p.nL} khoản · lãi sẽ thu ${short(p.intGet)}`)}
       ${short4('Nợ ròng (gap)', money(p.net), 'Đang vay − cho vay', 'dark')}
-      ${short4('Lấp gap', p.net <= 0 ? 'Đã cân' : `${short(Math.max(0, p.net - m.end))} còn thiếu`, gapNote)}
+      ${short4('Lấp gap', p.net <= 0 ? 'Đã cân' : m.past ? 'Đã qua' : `${short(Math.max(0, p.net - m.end))} còn thiếu`, gapNote)}
     </div>
     <div class="gapc">${P.map(x => `<button class="${x.k === m.k ? 'sel' : ''}" data-act="sel" data-v="${x.k}"
         data-tip="${esc(`${mLong(x.k)}\nĐang vay ${money(x.pos.borrow)}\nCho vay ${money(x.pos.lend)}\nNợ ròng ${money(x.pos.net)}\nSố dư cuối tháng ${money(x.end)}`)}">
@@ -1038,7 +1052,7 @@ document.addEventListener('input', e => {
 const rowId = el => el.closest('.row').dataset.id;
 const ACT = {
   sel: v => { S.sel = v; return 'soft'; },
-  step: v => { const k = D.shift(S.sel, +v); if (k >= S.start && k <= D.shift(S.start, S.horizon - 1)) S.sel = k; return 'soft'; },
+  step: v => { const k = D.shift(S.sel, +v); if (k >= (D.past(S)[0]?.k || S.start) &&k <= D.shift(S.start, S.horizon - 1)) S.sel = k; return 'soft'; },
   carry: v => { S.carry = v === '1'; },
   horizon: v => { S.horizon = +v; },
   tab: v => { ui.tab = v; },
