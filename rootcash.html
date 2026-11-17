@@ -85,6 +85,10 @@ small,.mut{color:var(--mut);font-size:.8rem;font-weight:400}
 .bal input.money{font-size:1.6rem;font-weight:700;padding:0;background:none;letter-spacing:-.02em}
 .when{display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--mut);white-space:nowrap}
 .when input{background:#fff;border:1px solid var(--line);width:auto;flex:1;color:var(--ink);padding:.2rem .5rem}
+.balhd{display:flex;align-items:center;justify-content:space-between;min-height:1.4rem}
+.bal.unset input.money{color:var(--mut)}
+.bnote{font-size:.78rem;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.1em}
+.bnote b{color:var(--ink);font-weight:600}.bnote b.neg{color:var(--neg,#C2412D)}
 .mode{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin:.75rem 0 .1rem;font-size:.8rem;flex-wrap:wrap}
 .sec,.sum{display:flex;align-items:center;gap:.5rem;margin-top:.95rem;padding-top:.8rem;border-top:1px solid var(--line)}
 .sec input.money{width:8em;text-align:right;font-weight:650;background:var(--field)}
@@ -412,32 +416,34 @@ const D = (() => {
       debt: principal + interest, free, end: num / n, days: ds, low, events: ev };
   }
 
-  /* Chuỗi tháng bắt đầu từ ngày nhập số dư. carry = free float dồn sang tháng sau làm buffer;
-     ngược lại mỗi tháng bắt đầu lại từ số dư nhập và cum là tổng free float đã đem đầu tư. */
-  function project(s) {
-    const out = []; let bal = s.opening, cum = 0;
-    const k0 = s.openDate.slice(0, 7), d0 = +s.openDate.slice(8);
-    for (let i = 0; i < s.horizon; i++) {
-      const m = month(s, shift(k0, i), s.carry ? bal : s.opening, i ? 1 : d0);
-      bal = m.end; m.cum = s.carry ? m.end : (cum += m.free); m.pos = position(s, m.k); out.push(m);
+  /* Chốt tháng: mỗi tháng giữ một số dư chốt riêng { date, amount }. Lần chốt mới nhất là "hiện tại".
+     • Tháng có chốt: tiền mặt chạy từ ngày chốt; expect = số dư dự tính tại ngày đó theo khung → lệch = chốt − dự tính.
+     • Tháng không chốt: nối tiếp số dư cuối tháng trước.
+     • Trước lần chốt đầu tiên (zero): không biết số dư nên tính từ 0đ đầu tháng (cuối tháng = free float).
+     Tương lai: carry = free float dồn sang tháng sau; ngược lại mỗi tháng bắt đầu lại từ số dư chốt, cum = free float luỹ kế. */
+  const checks = s => s.checks?.length ? s.checks : [{ date: s.openDate, amount: s.opening }];
+  function timeline(s) {
+    const C = [...checks(s)].sort((a, b) => a.date < b.date ? -1 : 1), last = C[C.length - 1], k0 = last.date.slice(0, 7);
+    const ks = [...s.incomes, ...s.living.items].map(x => x.from).concat(s.loans.map(l => l.start.slice(0, 7)), C.map(c => c.date.slice(0, 7))).filter(Boolean);
+    const first = ks.reduce((a, b) => a < b ? a : b), min = shift(k0, -24), out = [];
+    let bal = null, cum = 0;
+    for (let k = first < min ? min : first; k <= shift(k0, s.horizon - 1); k = shift(k, 1)) {
+      const c = C.find(x => x.date.slice(0, 7) === k), fut = k > k0, d = c ? +c.date.slice(8) : 1;
+      let m;
+      if (c) {
+        m = month(s, k, c.amount, d); m.check = c;
+        if (bal !== null && !out[out.length - 1].zero) { m.expect = d === 1 ? bal : month(s, k, bal, 1).days[d - 2].end; m.diff = c.amount - m.expect; }
+      } else if (bal === null) { m = month(s, k, 0, 1); m.zero = true; }
+      else m = month(s, k, fut && !s.carry ? last.amount : bal, 1);
+      m.past = k < k0; bal = m.end;
+      if (k === k0) cum = 0;
+      m.cum = s.carry || k < k0 ? m.end : (cum += m.free); m.pos = position(s, k); out.push(m);
     }
     return out;
   }
+  const project = s => timeline(s).filter(m => !m.past), past = s => timeline(s).filter(m => m.past);
 
-  /* Các tháng trước ngày nhập số dư: vẫn xem được khung. Không biết số dư thật nên dòng tiền tính từ 0đ đầu tháng
-     (cuối tháng = free float, đáy = tiền cần có sẵn đầu tháng). Bắt đầu từ tháng sớm nhất có dữ liệu, tối đa 24 tháng. */
-  function past(s) {
-    const k0 = s.openDate.slice(0, 7), min = shift(k0, -24);
-    const ks = [...s.incomes, ...s.living.items].map(x => x.from).concat(s.loans.map(l => l.start.slice(0, 7))).filter(k => k && k < k0);
-    if (!ks.length) return [];
-    const out = [], first = ks.reduce((a, b) => a < b ? a : b);
-    for (let k = first < min ? min : first; k < k0; k = shift(k, 1)) {
-      const m = month(s, k, 0, 1); m.past = true; m.cum = m.end; m.pos = position(s, k); out.push(m);
-    }
-    return out;
-  }
-
-  return { past, pad, sum, mOK, dOK, dim, shift, dateAt, addM, diff, days, today, dates, schedule, liquidity, loanEvents, loanAt, position, activeIn, month, project };
+  return { checks, timeline, past, pad, sum, mOK, dOK, dim, shift, dateAt, addM, diff, days, today, dates, schedule, liquidity, loanEvents, loanAt, position, activeIn, month, project };
 })();
 if (typeof module === 'object') module.exports = D;
 </script>
@@ -469,11 +475,16 @@ const sw = c => `<i class="sw" style="background:var(--${c})"></i>`;
 /* ----- Dữ liệu ----- */
 const blank = () => {
   const t = D.today();
-  return { v: 3, openDate: t, start: t.slice(0, 7), sel: t.slice(0, 7), horizon: 12, opening: 0, carry: true, incomes: [], living: { items: [] }, loans: [] };
+  return { v: 3, openDate: t, start: t.slice(0, 7), sel: t.slice(0, 7), horizon: 12, opening: 0, checks: [{ date: t, amount: 0 }], carry: true, incomes: [], living: { items: [] }, loans: [] };
 };
 const int = (v, min = 0, max = 1e13) => Math.min(max, Math.max(min, Math.round(+v || 0)));
 const pick = (v, list) => list.includes(v) ? v : list[0];
 const month = v => D.mOK(v) ? v : null;
+/* Lần chốt mới nhất quyết định "hiện tại": openDate / opening / start luôn suy ra từ đó (giữ tương thích file cũ). */
+function syncChecks(s) {
+  s.checks.sort((a, b) => a.date < b.date ? -1 : 1);
+  const last = s.checks[s.checks.length - 1]; s.openDate = last.date; s.opening = last.amount; s.start = last.date.slice(0, 7);
+}
 
 function normLoan(x) {
   const basis = pick(x.basis, ['none', 'flat', 'reducing', 'fixed', 'total']);
@@ -497,6 +508,10 @@ function norm(r) {                                                              
   if (D.dOK(r.openDate)) s.openDate = r.openDate; else if (D.mOK(r.start)) s.openDate = r.start + '-01';
   s.start = s.openDate.slice(0, 7);
   s.horizon = pick(+r.horizon, [12, 6, 24]); s.opening = int(r.opening, -1e13); s.carry = r.carry !== false;
+  const byMonth = new Map((Array.isArray(r.checks) ? r.checks : []).filter(c => D.dOK(c?.date))
+    .map(c => [c.date.slice(0, 7), { date: c.date, amount: int(c.amount, -1e13) }]));       // mỗi tháng một lần chốt
+  if (!byMonth.size) byMonth.set(s.openDate.slice(0, 7), { date: s.openDate, amount: s.opening });
+  s.checks = [...byMonth.values()]; syncChecks(s);
   s.sel = D.mOK(r.sel) && r.sel >= s.start && r.sel <= D.shift(s.start, s.horizon - 1) ? r.sel : s.start;
   s.incomes = (r.incomes || []).map(x => ({ id: id(x), label: label(x), amount: int(x.amount), day: int(x.day, 1, 31), from: month(x.from), until: month(x.until) }));
   const items = (r.living?.items || []).map(x => ({ id: id(x), label: label(x), amount: int(x.amount), from: month(x.from), until: month(x.until) }));
@@ -576,7 +591,7 @@ function autoSave(now) {
 const isEmpty = () => !S.incomes.length && !S.loans.length && !S.living.items.length;
 
 /* ----- Giao diện: khung trang (vẽ lại khi cấu trúc đổi) ----- */
-const ui = { open: new Set(), tab: 'borrow', days: new Set() };                     // dòng thu mở thời hạn; tab bảng khoản; ngày đang mở chi tiết
+const ui = { open: new Set(), tab: 'borrow', days: new Set(), pend: {} };                     // dòng thu mở thời hạn; tab bảng khoản; ngày đang mở chi tiết
 let ro, cur;
 
 const seg = (act, opts, val) => `<div class="seg">${opts.map(([v, t]) =>
@@ -621,9 +636,10 @@ ${isEmpty() ? `<div class="banner"><span><b>Khung đang trống.</b> Nhập số
   <aside class="card panel"><div class="pbody">
     <header><h2>Khung</h2></header>
     <div class="bal">
-      <span class="cap mut">Số dư hiện có</span>
-      ${moneyIn(S.opening, 'id="opening"')}
-      <label class="when" data-tip="Các khoản trước ngày này coi như đã nằm trong số dư">Tại đầu ngày <input type="date" id="openDate" value="${S.openDate}"></label>
+      <div class="balhd"><span class="cap mut" id="balCap">Số dư chốt</span><button class="ic" id="unchk" data-act="unchk" title="Bỏ chốt tháng này">×</button></div>
+      ${moneyIn(0, 'id="opening"')}
+      <label class="when" data-tip="Số dư thật tại đầu ngày này. Mỗi tháng chốt riêng, tháng khác không bị ghi đè">Tại đầu ngày <input type="date" id="openDate"></label>
+      <small class="bnote" id="balNote"></small>
     </div>
     <div class="mode"><span class="mut">Free float</span>${seg('carry', [[1, 'Giữ làm buffer'], [0, 'Đem đầu tư']], +S.carry)}</div>
     <div class="sec"><span class="cap">${sw('in')}Thu</span><i class="dots"></i><span class="n pos" id="incSum"></span></div>
@@ -674,10 +690,26 @@ function draw() {
   });
   $('#selLabel').textContent = mLong(m.k);
   $('#projFrom').textContent = `Từ ${dLabel(S.openDate)}`;
-  drawFigs(m, loans); drawMonths(P, m); drawDay(m); drawFrame(m, loans); drawPos(P, m); drawLoans(m, loans);
+  drawBal(m); drawFigs(m, loans); drawMonths(P, m); drawDay(m); drawFrame(m, loans); drawPos(P, m); drawLoans(m, loans);
 }
 
 const isLend = o => o.l.dir === 'lend';
+
+/* Ô số dư đi theo tháng đang xem: tháng đã chốt thì sửa số chốt của tháng đó; chưa chốt thì gõ số là chốt mới.
+   Dòng dưới: số dư khung dự tính tại ngày chốt và phần lệch (chốt − dự tính). */
+const chkOf = k => S.checks.find(c => c.date.slice(0, 7) === k);
+function drawBal(m) {
+  const c = m.check, amt = $('#opening'), date = $('#openDate');
+  $('.bal').classList.toggle('unset', !c);
+  $('#balCap').textContent = c ? `Số dư chốt ${mShort(m.k)}` : `Chưa chốt ${mShort(m.k)}`;
+  $('#unchk').hidden = !c || S.checks.length < 2;
+  if (document.activeElement !== amt) amt.value = c ? sign(c.amount) + nf.format(Math.abs(c.amount)) : '';
+  amt.placeholder = c ? '0' : m.zero ? '0' : nf.format(Math.round(m.opening));
+  if (document.activeElement !== date) date.value = c ? c.date : ui.pend[m.k] || m.k + '-01';
+  $('#balNote').innerHTML = c && m.expect != null
+    ? `Khung dự tính <b>${short(m.expect)}</b> · lệch <b class="${negOnly(m.diff)}">${m.diff > 0 ? '+' : ''}${short(m.diff)}</b>`
+    : c ? 'Lần chốt đầu tiên' : m.zero ? 'Trước lần chốt đầu, tính từ 0đ' : `Dự tính đầu tháng ${short(m.opening)} · gõ số để chốt`;
+}
 
 /* Thẻ xanh: chỉ Free float. Bốn thẻ còn lại là biểu đồ nhỏ, chi tiết nằm trong tooltip. */
 function drawFigs(m, loans) {
@@ -720,8 +752,8 @@ function drawFigs(m, loans) {
   $('#figs').innerHTML = `<div class="card fig hero"><span class="cap">Free float</span><small>${mLong(m.k)}${m.past ? ' · đã qua' : ''}</small><span class="n ${negOnly(m.free)}">${money(m.free)}</span></div>`
     + card('Trả nợ / Thu', ring, `Cứ 100đ thu vào, ${m.inflow ? dec(share * 100, 0) : '—'}đ đi trả nợ`)
     + card('M/X + i (%)', rate, base ? `Tháng này phải trả ${money(m.debt)}\ntrên ${money(base)} gốc của các khoản đến hạn\nM/x = gốc ${money(m.principal)} · i = lãi ${money(m.interest)}` : 'Không có khoản đến hạn')
-    + card('Đáy số dư', low, m.past ? 'Tháng đã qua, trước ngày nhập số dư: tính như đầu tháng có 0đ.\nĐáy âm = số tiền cần có sẵn đầu tháng' : `Số dư tiền mặt thấp nhất trong tháng${m.from > 1 ? `, tính từ ngày ${m.from}` : ''}`)
-    + card(m.past ? 'Ròng cuối tháng' : 'Số dư cuối tháng', wf, `${m.past ? 'Tháng đã qua, tính từ 0đ đầu tháng' : 'Tiền mặt thực tế cuối tháng (khác free float)'}\nĐầu kỳ ${money(m.opening)}\n+ Thu ${money(cin)}${vay ? `\n+ Tiền vay về ${money(vay)}` : ''}\n− Chi & trả nợ ${money(out)}\n= ${money(m.end)}`);
+    + card('Đáy số dư', low, m.zero ? 'Trước lần chốt đầu tiên: tính như đầu tháng có 0đ.\nĐáy âm = số tiền cần có sẵn đầu tháng' : `Số dư tiền mặt thấp nhất trong tháng${m.from > 1 ? `, tính từ ngày ${m.from}` : ''}`)
+    + card(m.zero ? 'Ròng cuối tháng' : 'Số dư cuối tháng', wf, `${m.zero ? 'Trước lần chốt đầu, tính từ 0đ đầu tháng' : 'Tiền mặt thực tế cuối tháng (khác free float)'}\nĐầu kỳ ${money(m.opening)}\n+ Thu ${money(cin)}${vay ? `\n+ Tiền vay về ${money(vay)}` : ''}\n− Chi & trả nợ ${money(out)}\n= ${money(m.end)}`);
 }
 
 /* Cột Thu (mint) chứa cột chi xếp chồng; phần mint lộ ra = free float; chấm đỏ = có ngày số dư âm trong tháng. */
@@ -756,12 +788,13 @@ function drawMonths(P, m) {
 
 function drawDay(m) {
   const negDays = m.days.filter(d => d.end < 0).length, mm = m.k.slice(5);
-  $('#dayTitle').textContent = `Trong tháng ${+mm}` + (m.past ? ' · đã qua, tính từ 0đ' : m.from > 1 ? ` · từ ngày ${m.from}` : '');
-  $('#dayTag').className = 'tag ' + (m.past ? '' : negDays ? 'bad' : '');
-  $('#dayTag').textContent = m.past ? 'Trước ngày nhập số dư' : negDays ? `${negDays} ngày âm` : 'Không có ngày âm';
+  $('#dayTitle').textContent = `Trong tháng ${+mm}` + (m.zero ? ' · trước lần chốt, tính từ 0đ' : m.from > 1 ? ` · từ ngày ${m.from}` : '');
+  $('#dayTag').className = 'tag ' + (m.zero ? '' : negDays ? 'bad' : '');
+  $('#dayTag').textContent = m.zero ? 'Trước lần chốt đầu' : negDays ? `${negDays} ngày âm` : 'Không có ngày âm';
   $('#dayChips').innerHTML = `<span class="chip">${m.from > 1 ? `Ngày ${m.from}` : 'Đầu tháng'}<b>${short(m.opening)}</b></span>
     <span class="chip">Thấp nhất<b class="${negOnly(m.low.end)}">${short(m.low.end)}</b> · ngày ${m.low.day}</span>
-    <span class="chip">Cuối tháng<b class="${negOnly(m.end)}">${short(m.end)}</b></span>`;
+    <span class="chip">Cuối tháng<b class="${negOnly(m.end)}">${short(m.end)}</b></span>
+    ${m.diff != null ? `<span class="chip" data-tip="${esc(`Chốt ngày ${m.from}: ${money(m.check.amount)}\nKhung dự tính: ${money(m.expect)}\nLệch = chốt − dự tính`)}">Lệch chốt<b class="${negOnly(m.diff)}">${m.diff > 0 ? '+' : ''}${short(m.diff)}</b></span>` : ''}`;
   dayChart(m);
   /* Gom theo ngày: mỗi ngày một dòng tổng (ròng). Bấm + mới mở chi tiết tiền vào / tiền ra. */
   const amt = v => `${v > 0 ? '+' : ''}${short(v)}`, days = [...new Set(m.events.map(e => e.day))];
@@ -1038,8 +1071,19 @@ function loanInput(el, f, v) {
 document.addEventListener('input', e => {
   const el = e.target, f = el.dataset.f, v = el.classList.contains('money') ? fmtInput(el, el.id === 'opening') : el.value;
   if (el.closest('dialog')) return loanInput(el, f, v);
-  if (el.id === 'opening') S.opening = v;
-  else if (el.id === 'openDate') { if (!D.dOK(v)) return; S.openDate = v; S.start = S.sel = v.slice(0, 7); }
+  if (el.id === 'opening' || el.id === 'openDate') {                                     // chốt tháng: chỉ đụng tới lần chốt của đúng tháng đó
+    const c = chkOf(S.sel);
+    if (el.id === 'opening') {
+      if (c) c.amount = v; else S.checks.push({ date: ui.pend[S.sel] || S.sel + '-01', amount: v });
+    } else {
+      if (!D.dOK(v)) return;
+      const k = v.slice(0, 7);
+      if (!c) { ui.pend[k] = v; S.sel = k; save(); return draw(); }                     // chưa có số: nhớ ngày, chờ gõ số
+      const other = chkOf(k); if (other && other !== c) S.checks.splice(S.checks.indexOf(other), 1);
+      c.date = v; S.sel = k;
+    }
+    syncChecks(S);
+  }
   else {
     const row = el.closest('.row'); if (!row) return;
     const x = (row.parentElement.id === 'incomes' ? S.incomes : S.living.items).find(o => o.id === row.dataset.id);
@@ -1053,6 +1097,7 @@ const rowId = el => el.closest('.row').dataset.id;
 const ACT = {
   sel: v => { S.sel = v; return 'soft'; },
   step: v => { const k = D.shift(S.sel, +v); if (k >= (D.past(S)[0]?.k || S.start) &&k <= D.shift(S.start, S.horizon - 1)) S.sel = k; return 'soft'; },
+  unchk: () => { const c = chkOf(S.sel); if (!c || S.checks.length < 2) return false; S.checks.splice(S.checks.indexOf(c), 1); syncChecks(S); return 'soft'; },
   carry: v => { S.carry = v === '1'; },
   horizon: v => { S.horizon = +v; },
   tab: v => { ui.tab = v; },

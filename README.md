@@ -28,7 +28,7 @@ Máy cần có Microsoft Edge hoặc Google Chrome. Không cần cài đặt gì
 
 ## App làm gì
 
-- **Số dư hiện có + ngày nhập:** số dư tiền mặt chạy tiếp từ ngày đó; Khung (thu, chi phí, trả nợ, free float) luôn tính đủ cả tháng.
+- **Chốt tháng:** mỗi tháng giữ một số dư chốt riêng (số tiền + ngày). Chốt tháng sau không ghi đè tháng trước. Tiền mặt chạy tiếp từ ngày chốt; app so với số khung dự tính và báo **lệch**. Khung (thu, chi phí, trả nợ, free float) luôn tính đủ cả tháng.
 - **Thu** và **Chi phí:** mỗi khoản có nhãn **Hàng tháng / Chỉ một tháng / Khoảng tháng**; danh sách đổi theo tháng đang xem. Thu có ngày tiền về; chi phí trải đều theo ngày.
 - **Đi vay** và **Cho vay** dùng chung một bộ tính, tự sinh lịch theo đúng ngày:
   - Ngày vay, ngày kỳ đầu, **ngày đáo hạn** (kỳ cuối có thể lẻ ngày).
