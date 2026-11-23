@@ -1,0 +1,29 @@
+<!doctype html><meta charset="utf-8"><body><pre id="out"></pre><script>
+/* Logo Flowsup: chữ "flow" trên, "sup" dưới, trắng trên ô xanh dương lì (không màu chuyển).
+   Mỗi cỡ vẽ riêng theo đúng số pixel, đường chân chữ đặt vào pixel nguyên → icon rõ nét trên taskbar. */
+const BG = '#2456D3', FG = '#FCFDFF', FONT = '"Segoe UI Variable Display","Segoe UI",sans-serif';
+const sizes = [16, 20, 24, 28, 30, 32, 36, 40, 42, 48, 64, 96, 128, 256];   // 24 × tỉ lệ màn hình (100–200%) cho taskbar
+function draw(px) {
+  const c = document.createElement('canvas'); c.width = c.height = px; const g = c.getContext('2d');
+  const r = px <= 24 ? px * .2 : px * .22;
+  g.fillStyle = BG; g.beginPath(); g.roundRect(0, 0, px, px, r); g.fill();
+  const fill = px <= 24 ? .88 : px <= 48 ? .8 : .72;                                 // cỡ nhỏ: chữ chiếm gần hết ô
+  g.letterSpacing = px <= 24 ? '0.5px' : '0px';                                      // cỡ nhỏ: tách chữ cho khỏi dính nhau
+  g.font = `700 100px ${FONT}`;
+  const w = Math.max(g.measureText('flow').width, g.measureText('sup').width);
+  const fs = 100 * (px * fill - (px <= 24 ? 2 : 0)) / w;
+  g.font = `700 ${fs}px ${FONT}`;
+  const m1 = g.measureText('flow'), m2 = g.measureText('sup');
+  const asc = m1.actualBoundingBoxAscent, xh = m2.actualBoundingBoxAscent, desc = m2.actualBoundingBoxDescent;
+  const gap = fs * (px <= 24 ? .04 : .08);
+  const total = asc + gap + xh + desc, top = (px - total) / 2;
+  const b1 = Math.round(top + asc), b2 = Math.round(b1 + gap + xh);
+  g.fillStyle = FG; g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+  g.fillText('flow', Math.round((px - m1.width) / 2), b1);
+  g.fillText('sup', Math.round((px - m2.width) / 2), b2);
+  return c.toDataURL('image/png').split(',')[1];
+}
+document.fonts.load(`700 40px ${FONT}`).finally(() => {
+  document.getElementById('out').textContent = 'BEGIN\n' + sizes.map(px => px + ':' + draw(px)).join('\n') + '\nEND';
+});
+</script>

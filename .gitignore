@@ -4,3 +4,5 @@ dist/
 .claude/
 *.json
 *.tmp
+launcher/target/
+build/

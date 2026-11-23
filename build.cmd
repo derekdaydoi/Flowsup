@@ -1,5 +1,11 @@
 @echo off
-rem Tao Rootcash.exe tu Rootcash.cs. Chi can Windows, khong cai them gi. Rootcash.exe phai nam canh rootcash.html.
+rem Tao Flowsup.exe tu launcher\ (Rust, bo GNU). Can: rustup + toolchain stable-x86_64-pc-windows-gnu.
+rem Flowsup.exe phai nam canh flowsup.html. Icon: node tools\make-icons.mjs (tao flowsup.ico).
 cd /d "%~dp0"
-"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /codepage:65001 /optimize+ /target:winexe /out:Rootcash.exe /win32icon:rootcash.ico /r:System.Windows.Forms.dll /r:System.Management.dll Rootcash.cs
-if errorlevel 1 (echo BUILD LOI & exit /b 1) else echo Da tao Rootcash.exe
+set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+cargo build --release --manifest-path launcher\Cargo.toml
+if errorlevel 1 (echo BUILD LOI & exit /b 1)
+copy /y launcher\target\release\flowsup.exe Flowsup.exe >nul
+launcher\target\release\seticon.exe Flowsup.exe flowsup.ico
+if errorlevel 1 (echo GAN ICON LOI & exit /b 1)
+echo Da tao Flowsup.exe

@@ -1,0 +1,22 @@
+[package]
+name = "flowsup"
+version = "2.0.0"
+edition = "2021"
+description = "Flowsup launcher: opens flowsup.html in an Edge app window and autosaves to Documents\\Flowsup"
+publish = false
+
+# Chỉ dùng thư viện chuẩn của Rust + API Windows có sẵn, không tải crate nào.
+[[bin]]
+name = "flowsup"
+path = "src/main.rs"
+
+[[bin]]
+name = "seticon"
+path = "src/seticon.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
