@@ -55,7 +55,7 @@ Máy cần Microsoft Edge hoặc Google Chrome. Không cần cài gì thêm.
 | `tests/` | Kiểm tra phần tính toán (chèn vào bản sao của trang, mở bằng Edge). |
 | `Flowsup.cmd` | Trình mở dự phòng (không tự lưu). `Flowsup.cmd shortcut` tạo lối tắt trên Desktop. |
 
-Bản cho iPhone: [Rootcash webapp](https://github.com/derekdaydoi/Rootcash). Flowsup nhập được file sao lưu của bản đó.
+Flowsup vẫn nhập được file sao lưu của bản Rootcash webapp cũ.
 
 ---
 

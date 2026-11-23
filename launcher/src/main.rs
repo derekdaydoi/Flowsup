@@ -256,7 +256,10 @@ fn main() {
         let started = Command::new(browser)
             .arg(format!("--app={url}"))
             .arg(format!("--user-data-dir={}", profile.display()))
-            .args(["--no-first-run", "--no-default-browser-check", "--window-size=1440,920", "--lang=vi"])
+            .args(["--no-first-run", "--no-default-browser-check", "--window-size=1440,920", "--lang=vi",
+                   // nhẹ hơn: tắt các dịch vụ phụ của trình duyệt mà một app cục bộ không cần
+                   "--disable-extensions", "--disable-sync", "--disable-background-networking", "--disable-component-update",
+                   "--disable-features=msEdgeSidebarV2,msHubApps,EdgeCollections,msShoppingExp,msEdgeTranslate"])
             .spawn();
         if started.is_err() { return message("Không mở được trình duyệt để hiển thị Flowsup."); }
     }
