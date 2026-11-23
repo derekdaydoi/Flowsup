@@ -31,6 +31,7 @@
   --ink:#15213A; --ink-2:#2B3852; --muted:#56637A; --rule:#D9E0EB; --rule-2:#E8ECF3;
   --in:#2456D3; --in-2:#1D47B3; --in-mid:#BCCDF5; --in-soft:#E2E9FB; --in-soft-ink:#1C3F9E; --on-in:#FCFDFF;
   --neg:#C2410C; --neg-soft:#FBE9DC; --neg-soft-ink:#9A3412;
+  --c1:#C2410C; --c2:#15213A; --c3:#0F766E; --c4:#B7791F; --c5:#6B7A93; --c6:#E8925B; --c7:#3E5C86; --c8:#C9D1DE;
   --scrim:#15213A66; --shadow:0 12px 32px #15213A29;
   --font:"Source Sans 3","Segoe UI",system-ui,sans-serif;
   --font-d:"Source Sans 3","Segoe UI",system-ui,sans-serif;
@@ -179,6 +180,22 @@ svg text{font:12px var(--font);fill:var(--muted)}
 .rw .cat{flex:0 1 7.5em;min-width:5em;height:30px;padding:0 8px;border:1px solid var(--rule);background:var(--card);font-size:14px;font-weight:600;color:var(--ink-2)}
 #loans th:nth-child(2){text-align:left}
 td.cg{text-align:left;color:var(--ink-2);max-width:9rem;overflow:hidden;text-overflow:ellipsis}
+
+.filters{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:flex-end}
+.filters label{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);white-space:nowrap}
+.filters select{height:36px;min-width:9rem;max-width:16rem;padding:0 10px;border:1px solid var(--rule);background:var(--card);font:inherit;font-weight:600;color:var(--ink);cursor:pointer}
+.filters select:hover{border-color:var(--ink)}
+.filt{flex:999 1 420px;align-self:flex-start}
+.frame .dn{display:flex;justify-content:center;padding:8px 0}
+.frame svg{width:min(100%,220px);height:auto}
+.arc{fill:none;stroke-width:30;transform:rotate(-90deg);transform-origin:100px 100px}
+.arc.bg{stroke:var(--rule-2)} .arc.c1{stroke:var(--c1)} .arc.c2{stroke:var(--c2)} .arc.c3{stroke:var(--c3)} .arc.c4{stroke:var(--c4)} .arc.c5{stroke:var(--c5)} .arc.c6{stroke:var(--c6)} .arc.c7{stroke:var(--c7)} .arc.c8{stroke:var(--c8)} .arc.ff{stroke:var(--in)}
+.dc{font:13px var(--font);fill:var(--muted);text-anchor:middle} .dv{font:700 24px var(--font-d);fill:var(--in);text-anchor:middle} .dv.neg{fill:var(--neg)}
+.lg{display:flex;flex-direction:column}
+.li2{display:grid;grid-template-columns:12px minmax(0,1fr) auto 3em;gap:10px;align-items:center;min-height:30px;border-bottom:1px solid var(--rule-2)}
+.li2 .nm{color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li2 .amt{font-weight:600;color:var(--ink);white-space:nowrap} .li2 .pc{text-align:right;color:var(--muted);font-size:13px}
+.sw2{width:12px;height:12px} .sw2.c1{background:var(--c1)} .sw2.c2{background:var(--c2)} .sw2.c3{background:var(--c3)} .sw2.c4{background:var(--c4)} .sw2.c5{background:var(--c5)} .sw2.c6{background:var(--c6)} .sw2.c7{background:var(--c7)} .sw2.c8{background:var(--c8)} .sw2.ff{background:var(--in)}
 
 /* Dữ liệu */
 .dside{flex:1 1 500px;display:flex;flex-direction:column;gap:var(--gap);min-width:0}
@@ -598,7 +615,7 @@ const isEmpty = () => !S.incomes.length && !S.loans.length && !S.living.items.le
 
 /* ----- Giao diện: ba trang dùng chung nút chọn tháng ----- */
 let savedView = 'month'; try { savedView = localStorage.getItem(VKEY) || 'month'; } catch {}
-const ui = { open: new Set(), tab: 'borrow', view: ['month', 'plan', 'data'].includes(savedView) ? savedView : 'month', pend: {}, cat: null };
+const ui = { open: new Set(), tab: 'borrow', view: ['month', 'plan', 'data'].includes(savedView) ? savedView : 'month', pend: {}, cat: null, txt: null };
 let ro, cur;
 
 const seg = (act, opts, val) => `<div class="seg">${opts.map(([v, t]) =>
@@ -611,9 +628,15 @@ const NOCAT = 'Chưa có nhóm', SUGGEST = ['Hậu nợ', 'Phương Anh', 'Bank'
 const catOf = x => (x?.cat || '').trim() || NOCAT;
 const allCats = () => [...new Set([...S.incomes, ...S.living.items, ...S.loans].map(catOf))].sort((a, b) => a === NOCAT ? 1 : b === NOCAT ? -1 : a.localeCompare(b, 'vi'));
 const catIn = x => `<input class="cat" data-f="cat" list="cats" value="${esc(x.cat || '')}" placeholder="Nhóm" aria-label="Nhóm" maxlength="40">`;
-const catChips = () => { const cs = allCats(); return cs.length < 2 && !ui.cat ? '' : `<div class="chips" role="group" aria-label="Lọc theo nhóm">
-  <button class="${ui.cat ? '' : 'on'}" data-act="cat" data-v="">Tất cả</button>${cs.map(c => `<button class="${ui.cat === c ? 'on' : ''}" data-act="cat" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`; };
-const inCat = x => !ui.cat || catOf(x) === ui.cat;
+/* Bộ lọc: Nhóm và Nội dung (tên khoản, không phân biệt hoa thường). Rỗng = tất cả. */
+const lkey = s => String(s || '').trim().toLowerCase();
+const allLabels = () => { const m = new Map(); for (const x of [...S.incomes, ...S.living.items, ...S.loans]) { const k = lkey(x.label); if (k && !m.has(k)) m.set(k, x.label.trim()); } return [...m].sort((a, b) => a[1].localeCompare(b[1], 'vi')); };
+const filters = () => `<div class="filters">
+  <label>Nhóm<select data-filter="cat"><option value="">Tất cả</option>${allCats().map(c => `<option value="${esc(c)}" ${ui.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+  <label>Nội dung<select data-filter="txt"><option value="">Tất cả</option>${allLabels().map(([k, t]) => `<option value="${esc(k)}" ${ui.txt === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+  ${ui.cat || ui.txt ? '<button class="btn" data-act="clearf">Bỏ lọc</button>' : ''}</div>`;
+const inFilt = x => (!ui.cat || catOf(x) === ui.cat) && (!ui.txt || lkey(x?.label) === ui.txt);
+
 
 /* Kiểu lặp của một khoản thu / chi: hàng tháng | chỉ một tháng | khoảng tháng tuỳ chọn. */
 const recOf = x => !x.from && !x.until ? 'monthly' : x.from === x.until ? 'once' : 'range';
@@ -648,7 +671,7 @@ const VIEWS = {
 </section>`,
   plan: () => `
 <section class="card catcard">
-  <div class="hd"><h2>Theo nhóm</h2>${catChips() || '<span class="note">Gõ nhóm cho từng khoản ở Dữ liệu thô để tách biểu đồ này</span>'}</div>
+  <div class="hd"><h2>Theo nhóm</h2>${filters()}</div>
   <div class="cats" id="cats"></div>
 </section>
 <section class="row">
@@ -673,7 +696,7 @@ const VIEWS = {
     </div>
     <small class="bnote" id="balNote"></small>
   </div>
-  ${catChips() ? `<div class="card filt"><div class="hd"><h2>Lọc theo nhóm</h2></div>${catChips()}</div>` : ''}
+  <div class="card filt"><div class="hd" style="margin:0"><h2>Lọc</h2>${filters()}</div></div>
 </div>
 <div class="row">
   <div class="card half">
@@ -798,23 +821,49 @@ function drawDue(m) {
   $('#doneTag').textContent = items.length ? `Xong ${done}/${items.length}` : 'Trống';
 }
 
-/* Phân tích theo nhóm, tháng đang xem: tiền ra, tiền vào (cả tháng) và dư nợ cuối tháng, mỗi nhóm một thanh. */
+/* Phân tích tháng đang xem.
+   1. Khung tháng (biểu đồ tròn): tiền vào = 100%; mỗi nhóm chi (trả nợ + chi phí) là một phần; phần còn lại là Free float.
+      Luôn hiện mọi nhóm, không phụ thuộc bộ lọc, để thấy tương quan giữa các nhóm.
+   2. Ba danh sách thanh: tiền ra, tiền vào (cả tháng) và dư nợ cuối tháng theo nhóm — đi theo bộ lọc Nhóm / Nội dung. */
+const SLICES = 7;
 function drawCats(m, loans) {
   const byId = new Map([...S.incomes, ...S.living.items, ...S.loans].map(x => [x.id, x])), add = (o, c, v) => o.set(c, (o.get(c) || 0) + v);
-  const out = new Map(), inn = new Map(), owe = new Map();
+  const all = { out: new Map(), inn: new Map() }, flt = { out: new Map(), inn: new Map() }, owe = new Map();
   for (const e of D.month(S, m.k, 0, 1).events) {
     if (e.cat === 'loanIn' || e.cat === 'lendOut') continue;                          // tiền giải ngân không tính
-    add(e.value < 0 ? out : inn, catOf(byId.get(e.id)), Math.abs(e.value));
+    const x = byId.get(e.id), side = e.value < 0 ? 'out' : 'inn';
+    add(all[side], catOf(x), Math.abs(e.value)); if (inFilt(x)) add(flt[side], catOf(x), Math.abs(e.value));
   }
-  for (const x of S.living.items) if (x.amount && D.activeIn(x, m.k)) add(out, catOf(x), x.amount);
-  for (const o of loans) if (!isLend(o) && o.at.state !== 'future' && o.at.balance > 0) add(owe, catOf(o.l), o.at.balance);
+  for (const x of S.living.items) if (x.amount && D.activeIn(x, m.k)) { add(all.out, catOf(x), x.amount); if (inFilt(x)) add(flt.out, catOf(x), x.amount); }
+  for (const o of loans) if (!isLend(o) && o.at.state !== 'future' && o.at.balance > 0 && inFilt(o.l)) add(owe, catOf(o.l), o.at.balance);
+
+  // 1. Khung tháng
+  const income = D.sum([...all.inn.values()], v => v), spent = D.sum([...all.out.values()], v => v), free = income - spent;
+  const ranked = [...all.out].filter(([, v]) => Math.round(v)).sort((a, b) => b[1] - a[1]);
+  const top = ranked.slice(0, SLICES), rest = ranked.slice(SLICES);
+  const parts = top.map(([c, v], i) => ({ c, v, k: 'c' + (i + 1) }));
+  if (rest.length) parts.push({ c: `${rest.length} nhóm khác`, v: D.sum(rest, r => r[1]), k: 'c8', tip: rest.map(([c, v]) => `${c}  ${short(v)}`).join('\n') });
+  if (free > 0) parts.push({ c: 'Free float', v: free, k: 'ff' });
+  const base = Math.max(income, spent, 1);
+  let at = 0;
+  const arcs = parts.map(p => { const len = p.v / base * 100, a = `<circle class="arc ${p.k}" cx="100" cy="100" r="72" pathLength="100" stroke-dasharray="${len} ${100 - len}" stroke-dashoffset="${-at}"><title>${esc(p.c)}: ${money(p.v)}</title></circle>`; at += len; return a; }).join('');
+  const pct = v => income ? dec(v / income * 100, 0) + '%' : '—';
+  const donut = `<div class="cb frame"><div class="cbh"><span class="cap">Khung ${mShort(m.k)}: tiền vào = 100%</span><b>${money(income)}</b></div>
+    <div class="dn"><svg viewBox="0 0 200 200" role="img" aria-label="Tiền vào chia cho các nhóm chi và Free float">
+      <circle class="arc bg" cx="100" cy="100" r="72"/>${arcs}
+      <text x="100" y="90" class="dc">${free >= 0 ? 'Free float' : 'Chi vượt thu'}</text>
+      <text x="100" y="116" class="dv ${free < 0 ? 'neg' : ''}">${short(free)}</text>
+      <text x="100" y="136" class="dc">${free >= 0 ? pct(free) + ' tiền vào' : pct(-free) + ' tiền vào'}</text></svg></div>
+    <div class="lg">${parts.map(p => `<div class="li2" ${p.tip ? `data-tip="${esc(p.tip)}"` : ''}><i class="sw2 ${p.k}"></i><span class="nm">${esc(p.c)}</span><span class="amt">${short(p.v)}</span><span class="pc">${pct(p.v)}</span></div>`).join('')}</div></div>`;
+
+  // 2. Danh sách thanh theo bộ lọc
   const block = (title, map, cls) => {
     const rows = [...map].filter(([, v]) => Math.round(v)).sort((a, b) => b[1] - a[1]), max = Math.max(1, ...rows.map(r => r[1])), tot = D.sum(rows, r => r[1]);
     return `<div class="cb"><div class="cbh"><span class="cap">${title}</span><b>${money(tot)}</b></div>${rows.map(([c, v]) =>
-      `<button class="cr ${ui.cat && ui.cat !== c ? 'dim' : ''}" data-act="cat" data-v="${ui.cat === c ? '' : esc(c)}" data-tip="${esc(`${c}\n${money(v)}, ${dec(v / tot * 100, 0)}%`)}">
-        <span class="nm">${esc(c)}</span><span class="bar"><i class="${cls}" style="width:${v / max * 100}%"></i></span><span class="amt">${short(v)}</span></button>`).join('') || '<p class="note">Không có.</p>'}</div>`;
+      `<div class="cr" data-tip="${esc(`${c}\n${money(v)}, ${dec(v / tot * 100, 0)}%`)}">
+        <span class="nm">${esc(c)}</span><span class="bar"><i class="${cls}" style="width:${v / max * 100}%"></i></span><span class="amt">${short(v)}</span></div>`).join('') || '<p class="note">Không có.</p>'}</div>`;
   };
-  $('#cats').innerHTML = block(`Tiền ra ${mShort(m.k)}`, out, 'o') + block(`Tiền vào ${mShort(m.k)}`, inn, 'i') + block(`Dư nợ cuối ${mShort(m.k)}`, owe, 'd');
+  $('#cats').innerHTML = donut + block(`Tiền ra ${mShort(m.k)}`, flt.out, 'o') + block(`Tiền vào ${mShort(m.k)}`, flt.inn, 'i') + block(`Dư nợ cuối ${mShort(m.k)}`, owe, 'd');
 }
 
 /* Kế hoạch: cột = dư trong tháng, đường = số dư cuối tháng. Bấm một cột để xem tháng đó. */
@@ -861,7 +910,7 @@ function drawPos(P, m) {
 const usualPay = sc => { const p = sc.rows.map(r => r.pay).sort((a, b) => a - b); return p.length ? p[Math.floor((p.length - 1) / 2)] : 0; };
 function drawPayoff(m, loans) {
   const lend = ui.tab === 'lend', list = loans.filter(o => isLend(o) === lend);
-  const open = list.filter(o => o.l.open && o.at.state !== 'done' && inCat(o.l)), live = list.filter(o => !o.l.open && o.at.state !== 'done' && inCat(o.l))
+  const open = list.filter(o => o.l.open && o.at.state !== 'done' && inFilt(o.l)), live = list.filter(o => !o.l.open && o.at.state !== 'done' && inFilt(o.l))
     .sort((a, b) => a.sc.end < b.sc.end ? -1 : a.sc.end > b.sc.end ? 1 : 0);
   $('#openPill').innerHTML = open.length ? `<span class="pill" data-tip="${esc(open.map(o => `${o.l.label}  ${money(o.l.principal)}`).join('\n'))}">Chưa hẹn ngày: ${open.length} khoản, ${short(D.sum(open, o => o.l.principal))}</span>` : '';
   if (!live.length) return $('#payoff').innerHTML = `<div class="empty">${lend ? 'Không có khoản cho vay nào đang chạy.' : 'Không có khoản vay nào đang chạy.'}</div>`;
@@ -901,20 +950,20 @@ function drawFrame(m, loans) {
     let hidden = 0;
     $$(sel + ' .rw').forEach(r => {
       const x = list.find(o => o.id === r.dataset.id); if (!x) return;
-      const on = D.activeIn(x, m.k); r.hidden = !on || !inCat(x); hidden += !on;
+      const on = D.activeIn(x, m.k); r.hidden = !on || !inFilt(x); hidden += !on;
       const c = r.querySelector('.rec'); c.textContent = recName(x); c.className = 'rec ' + recOf(x);
     });
     $(box).textContent = hidden ? `${hidden} ${word} ở tháng khác` : '';
   };
   byMonth('#incomes', S.incomes, '#incHidden', 'khoản thu');
   byMonth('#living', S.living.items, '#livHidden', 'khoản chi');
-  $('#collects').innerHTML = loans.filter(o => isLend(o) && o.ev.length && inCat(o.l)).map(dueRow).join('');
+  $('#collects').innerHTML = loans.filter(o => isLend(o) && o.ev.length && inFilt(o.l)).map(dueRow).join('');
   $('#livSum').textContent = plain(-m.living);
   $('#livDay').textContent = m.living ? `${short(m.living / m.dim)}/ngày` : '';
 }
 
 function drawLoans(m, loans) {
-  const k = m.k, lend = ui.tab === 'lend', list = loans.filter(o => isLend(o) === lend && inCat(o.l));
+  const k = m.k, lend = ui.tab === 'lend', list = loans.filter(o => isLend(o) === lend && inFilt(o.l));
   const live = list.filter(o => o.at.state !== 'future'), bal = D.sum(live, o => o.at.balance);
   $('#loanSum').innerHTML = list.length ? `${lend ? 'Còn phải thu' : 'Dư nợ'} cuối ${mShort(k)} <b class="n">${money(bal)}</b>` : '';
   if (!list.length) return $('#loans').innerHTML = `<div class="empty">${lend ? 'Chưa có khoản cho vay.' : 'Chưa có khoản vay.'}</div>`;
@@ -1145,6 +1194,10 @@ function loanInput(el, f, v) {
   meta(); preview();
 }
 
+document.addEventListener('change', e => {                                      // ô chọn bộ lọc
+  const f = e.target.dataset?.filter; if (!f) return;
+  ui[f] = e.target.value || null; render();
+});
 document.addEventListener('input', e => {
   const el = e.target, f = el.dataset.f, v = el.classList.contains('money') ? fmtInput(el, el.id === 'opening') : el.value;
   if (el.closest('dialog')) return loanInput(el, f, v);
@@ -1180,7 +1233,7 @@ const ACT = {
   carry: v => { S.carry = v === '1'; },
   horizon: v => { S.horizon = +v; },
   tab: v => { ui.tab = v; },
-  cat: v => { ui.cat = v || null; },
+  clearf: () => { ui.cat = ui.txt = null; },
   'add-income': () => { S.incomes.push({ id: uid(), label: '', amount: 0, day: 1, from: S.sel, until: S.sel }); },   // mặc định: chỉ tháng đang xem
   'add-living': () => { S.living.items.push({ id: uid(), label: '', amount: 0, from: S.sel, until: S.sel }); },
   del: (v, el) => { const id = rowId(el); S.incomes = S.incomes.filter(x => x.id !== id); S.living.items = S.living.items.filter(x => x.id !== id); },
