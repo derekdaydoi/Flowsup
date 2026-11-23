@@ -197,6 +197,13 @@ td.cg{text-align:left;color:var(--ink-2);max-width:9rem;overflow:hidden;text-ove
 .li2 .amt{font-weight:600;color:var(--ink);white-space:nowrap} .li2 .pc{text-align:right;color:var(--muted);font-size:13px}
 .sw2{width:12px;height:12px} .sw2.c1{background:var(--c1)} .sw2.c2{background:var(--c2)} .sw2.c3{background:var(--c3)} .sw2.c4{background:var(--c4)} .sw2.c5{background:var(--c5)} .sw2.c6{background:var(--c6)} .sw2.c7{background:var(--c7)} .sw2.c8{background:var(--c8)} .sw2.ff{background:var(--in)}
 
+.flowcard{margin-bottom:var(--gap)}
+#flow{display:block;width:100%;height:400px}
+.band{opacity:.28} .band:hover{opacity:.5}
+.band.in{fill:var(--in)} .band.neg{fill:var(--neg)} .band.ff{fill:var(--in);opacity:.55} .band.c1{fill:var(--c1)} .band.c2{fill:var(--c2)} .band.c3{fill:var(--c3)} .band.c4{fill:var(--c4)} .band.c5{fill:var(--c5)} .band.c6{fill:var(--c6)} .band.c7{fill:var(--c7)} .band.c8{fill:var(--c5)}
+.node.in{fill:var(--in)} .node.neg{fill:var(--neg)} .node.pool{fill:var(--ink)} .node.ff{fill:var(--in)} .node.c1{fill:var(--c1)} .node.c2{fill:var(--c2)} .node.c3{fill:var(--c3)} .node.c4{fill:var(--c4)} .node.c5{fill:var(--c5)} .node.c6{fill:var(--c6)} .node.c7{fill:var(--c7)} .node.c8{fill:var(--c5)}
+.sl{font:13px var(--font)} .sl .sn{fill:var(--ink);font-weight:600} .sl .sv{fill:var(--muted)} .sl.ff .sn,.sl.ff .sv{fill:var(--in);font-weight:700} .sl.neg .sn{fill:var(--neg)}
+
 /* Dữ liệu */
 .dside{flex:1 1 500px;display:flex;flex-direction:column;gap:var(--gap);min-width:0}
 .mainc{flex:999 1 600px;align-self:flex-start}
@@ -615,7 +622,7 @@ const isEmpty = () => !S.incomes.length && !S.loans.length && !S.living.items.le
 
 /* ----- Giao diện: ba trang dùng chung nút chọn tháng ----- */
 let savedView = 'month'; try { savedView = localStorage.getItem(VKEY) || 'month'; } catch {}
-const ui = { open: new Set(), tab: 'borrow', view: ['month', 'plan', 'data'].includes(savedView) ? savedView : 'month', pend: {}, cat: null, txt: null };
+const ui = { open: new Set(), tab: 'borrow', view: ['month', 'plan', 'data'].includes(savedView) ? savedView : 'month', pend: {}, cat: null, txt: null, by: 'cat' };
 let ro, cur;
 
 const seg = (act, opts, val) => `<div class="seg">${opts.map(([v, t]) =>
@@ -635,6 +642,16 @@ const filters = () => `<div class="filters">
   <label>Nhóm<select data-filter="cat"><option value="">Tất cả</option>${allCats().map(c => `<option value="${esc(c)}" ${ui.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
   <label>Nội dung<select data-filter="txt"><option value="">Tất cả</option>${allLabels().map(([k, t]) => `<option value="${esc(k)}" ${ui.txt === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
   ${ui.cat || ui.txt ? '<button class="btn" data-act="clearf">Bỏ lọc</button>' : ''}</div>`;
+/* Hai chiều: Nhóm (với ai) và Nội dung (loại gì). Tên hiển thị = "Nhóm, Nội dung"; trùng nhau thì thêm số tiền gốc. */
+const labelOf = x => (x?.label || '').trim() || 'Chưa đặt tên';
+const keyOf = x => ui.by === 'txt' ? (new Map(allLabels()).get(lkey(x?.label)) || labelOf(x)) : catOf(x);
+const dupKey = x => catOf(x) + '|' + lkey(x?.label);
+function dispName(x) {
+  if (!x) return '';
+  const c = (x.cat || '').trim(), l = (x.label || '').trim(), base = c && l ? `${c}, ${l}` : c || l || 'Chưa đặt tên';
+  const twins = [...S.incomes, ...S.living.items, ...S.loans].filter(y => dupKey(y) === dupKey(x)).length;
+  return twins > 1 ? base + (x.note ? ` (${x.note})` : x.principal ? ` ${short(x.principal)}` : x.amount ? ` ${short(x.amount)}` : '') : base;
+}
 const inFilt = x => (!ui.cat || catOf(x) === ui.cat) && (!ui.txt || lkey(x?.label) === ui.txt);
 
 
@@ -671,8 +688,12 @@ const VIEWS = {
 </section>`,
   plan: () => `
 <section class="card catcard">
-  <div class="hd"><h2>Theo nhóm</h2>${filters()}</div>
+  <div class="hd"><div class="side"><h2>Khung tháng</h2>${seg('by', [['cat', 'Theo nhóm'], ['txt', 'Theo nội dung']], ui.by)}</div>${filters()}</div>
   <div class="cats" id="cats"></div>
+</section>
+<section class="card flowcard">
+  <div class="hd"><h2 id="flowTitle">Tiền đi đâu</h2><span class="note">Rê chuột lên từng dải để xem số tiền</span></div>
+  <svg id="flow" role="img" aria-label="Dòng chảy tiền trong tháng: nguồn thu, các khoản chi và phần còn lại"></svg>
 </section>
 <section class="row">
   <div class="card months">
@@ -749,6 +770,7 @@ ${isEmpty() ? `<div class="banner"><span><b>Chưa có dữ liệu.</b> Vào Dữ
 <footer class="foot"><span id="autoState">${esc(autoState)}</span><span>© derekdaydoi</span></footer>`;
   ro?.disconnect(); ro = null;
   if (ui.view === 'month') { ro = new ResizeObserver(() => cur && dayChart(cur)); ro.observe($('#day')); }
+  if (ui.view === 'plan') { ro = new ResizeObserver(() => lastFlow && drawSankey(lastFlow.m, lastFlow.all)); ro.observe($('#flow')); }
   draw();
   if ($('#dueList')) $('#dueList').scrollTop = keep.l;
   if (scrollY !== keep.y) scrollTo(0, keep.y);
@@ -798,10 +820,10 @@ function drawLow(m) {
 /* Đến hạn: mỗi khoản một dòng mỗi ngày (gốc + lãi gộp lại), chỉ ghi tên khoản. Tick = đã trả / đã thu (chỉ đánh dấu). */
 const nameOf = e => e.label.split(' · ')[0];
 function dueItems(m) {
-  const map = new Map();
+  const map = new Map(), byId = new Map([...S.incomes, ...S.loans].map(x => [x.id, x]));
   for (const e of m.events) {
     const key = `${m.k}|${e.id}|${e.day}`, it = map.get(key);
-    if (it) { it.value += e.value; it.parts.push(e); } else map.set(key, { key, day: e.day, name: nameOf(e), value: e.value, parts: [e] });
+    if (it) { it.value += e.value; it.parts.push(e); } else map.set(key, { key, day: e.day, name: dispName(byId.get(e.id)) || nameOf(e), value: e.value, parts: [e] });
   }
   return [...map.values()];
 }
@@ -825,6 +847,58 @@ function drawDue(m) {
    1. Khung tháng (biểu đồ tròn): tiền vào = 100%; mỗi nhóm chi (trả nợ + chi phí) là một phần; phần còn lại là Free float.
       Luôn hiện mọi nhóm, không phụ thuộc bộ lọc, để thấy tương quan giữa các nhóm.
    2. Ba danh sách thanh: tiền ra, tiền vào (cả tháng) và dư nợ cuối tháng theo nhóm — đi theo bộ lọc Nhóm / Nội dung. */
+
+/* Dòng chảy tiền trong tháng (Sankey): nguồn thu bên trái → bể Tiền vào ở giữa → các loại chi bên phải + Free float.
+   Vẽ theo đúng số pixel đang có (chữ không bị kéo giãn); nhóm quá nhỏ để ghi nhãn được gộp lại. */
+let lastFlow = null;
+function drawSankey(m, all) {
+  lastFlow = { m, all };
+  const svg = $('#flow'); if (!svg) return;
+  const W = svg.clientWidth, H = svg.clientHeight; if (!W) return;
+  const inc = [...all.inn].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const out = [...all.out].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const vin = D.sum(inc, r => r[1]), vout = D.sum(out, r => r[1]), free = vin - vout, total = Math.max(vin, vout, 1);
+  $('#flowTitle').textContent = `Tiền đi đâu ${mShort(m.k)}`;
+  if (!vin && !vout) { svg.innerHTML = ''; return; }
+  const gap = 6, minH = 16, top = 26, bot = 8, avail = H - top - bot;
+  // gộp các phần quá nhỏ để nhãn không đè nhau
+  const fit = (rows, extra) => {
+    let list = rows.slice();
+    for (;;) {
+      const n = list.length + extra, k = (avail - gap * (n - 1)) / total;
+      const small = list.filter(([, v]) => v * k < minH);
+      if (small.length < 2 || list.length <= 2) return list;
+      const keep = list.filter(r => !small.includes(r)), sum = D.sum(small, r => r[1]);
+      list = [...keep, [`${small.length} nhóm nhỏ`, sum, small.map(([c, v]) => `${c}  ${short(v)}`).join('\n')]];
+    }
+  };
+  const L = fit(inc, free < 0 ? 1 : 0), R = fit(out, free > 0 ? 1 : 0);
+  if (free < 0) L.push(['Thiếu (chi vượt thu)', -free, null, 'neg']);
+  if (free > 0) R.push(['Free float', free, null, 'ff']);
+  const n = Math.max(L.length, R.length), k = (avail - gap * (n - 1)) / total;
+  const xL = Math.min(170, W * .22), xM = W / 2 - 7, xR = W - Math.min(190, W * .26), nw = 14;
+  const stack = (rows, x) => { let y = top; return rows.map(r => { const h = Math.max(2, r[1] * k), o = { name: r[0], v: r[1], tip: r[2], cls: r[3] || '', x, y, h }; y += h + gap; return o; }); };
+  const ln = stack(L, xL - nw), rn = stack(R, xR);
+  const pool = { x: xM, y: top, h: total * k };
+  const band = (x1, y1, h1, x2, y2, h2, cls, tip) => {
+    const c = (x1 + x2) / 2;
+    return `<path class="band ${cls}" d="M${x1},${y1}C${c},${y1} ${c},${y2} ${x2},${y2}L${x2},${y2 + h2}C${c},${y2 + h2} ${c},${y1 + h1} ${x1},${y1 + h1}Z" data-tip="${esc(tip)}"/>`;
+  };
+  let py = pool.y, bands = '';
+  for (const a of ln) { const h = a.v * k; bands += band(a.x + nw, a.y, a.h, pool.x, py, h, a.cls === 'neg' ? 'neg' : 'in', `${a.name}\n${money(a.v)}`); py += h; }
+  py = pool.y; const pal = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8'];
+  rn.forEach((b, i) => { const h = b.v * k; b.col = b.cls === 'ff' ? 'ff' : pal[Math.min(i, 7)]; bands += band(pool.x + nw, py, h, b.x, b.y, b.h, b.col, `${b.name}\n${money(b.v)}, ${dec(b.v / (vin || total) * 100, 0)}% tiền vào`); py += h; });
+  const label = (o, side) => {
+    const ty = o.y + o.h / 2 + 4, x = side === 'L' ? o.x - 8 : o.x + nw + 8, anchor = side === 'L' ? 'end' : 'start';
+    return `<text x="${x}" y="${ty}" text-anchor="${anchor}" class="sl ${o.cls}" ${o.tip ? `data-tip="${esc(o.tip)}"` : ''}><tspan class="sn">${esc(o.name)}</tspan><tspan class="sv" dx="6">${short(o.v)}</tspan></text>`;
+  };
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = `${bands}
+    ${ln.map(a => `<rect class="node ${a.cls === 'neg' ? 'neg' : 'in'}" x="${a.x}" y="${a.y}" width="${nw}" height="${a.h}"/>` + label(a, 'L')).join('')}
+    <rect class="node pool" x="${pool.x}" y="${pool.y}" width="${nw}" height="${pool.h}"/>
+    <text x="${pool.x + nw / 2}" y="${top - 10}" text-anchor="middle" class="sl"><tspan class="sn">Tiền vào</tspan><tspan class="sv" dx="6">${short(vin)}</tspan></text>
+    ${rn.map(b => `<rect class="node ${b.col}" x="${b.x}" y="${b.y}" width="${nw}" height="${b.h}"/>` + label(b, 'R')).join('')}`;
+}
 const SLICES = 7;
 function drawCats(m, loans) {
   const byId = new Map([...S.incomes, ...S.living.items, ...S.loans].map(x => [x.id, x])), add = (o, c, v) => o.set(c, (o.get(c) || 0) + v);
@@ -832,10 +906,10 @@ function drawCats(m, loans) {
   for (const e of D.month(S, m.k, 0, 1).events) {
     if (e.cat === 'loanIn' || e.cat === 'lendOut') continue;                          // tiền giải ngân không tính
     const x = byId.get(e.id), side = e.value < 0 ? 'out' : 'inn';
-    add(all[side], catOf(x), Math.abs(e.value)); if (inFilt(x)) add(flt[side], catOf(x), Math.abs(e.value));
+    add(all[side], keyOf(x), Math.abs(e.value)); if (inFilt(x)) add(flt[side], keyOf(x), Math.abs(e.value));
   }
-  for (const x of S.living.items) if (x.amount && D.activeIn(x, m.k)) { add(all.out, catOf(x), x.amount); if (inFilt(x)) add(flt.out, catOf(x), x.amount); }
-  for (const o of loans) if (!isLend(o) && o.at.state !== 'future' && o.at.balance > 0 && inFilt(o.l)) add(owe, catOf(o.l), o.at.balance);
+  for (const x of S.living.items) if (x.amount && D.activeIn(x, m.k)) { add(all.out, keyOf(x), x.amount); if (inFilt(x)) add(flt.out, keyOf(x), x.amount); }
+  for (const o of loans) if (!isLend(o) && o.at.state !== 'future' && o.at.balance > 0 && inFilt(o.l)) add(owe, keyOf(o.l), o.at.balance);
 
   // 1. Khung tháng
   const income = D.sum([...all.inn.values()], v => v), spent = D.sum([...all.out.values()], v => v), free = income - spent;
@@ -864,6 +938,7 @@ function drawCats(m, loans) {
         <span class="nm">${esc(c)}</span><span class="bar"><i class="${cls}" style="width:${v / max * 100}%"></i></span><span class="amt">${short(v)}</span></div>`).join('') || '<p class="note">Không có.</p>'}</div>`;
   };
   $('#cats').innerHTML = donut + block(`Tiền ra ${mShort(m.k)}`, flt.out, 'o') + block(`Tiền vào ${mShort(m.k)}`, flt.inn, 'i') + block(`Dư nợ cuối ${mShort(m.k)}`, owe, 'd');
+  drawSankey(m, all);
 }
 
 /* Kế hoạch: cột = dư trong tháng, đường = số dư cuối tháng. Bấm một cột để xem tháng đó. */
@@ -920,7 +995,7 @@ function drawPayoff(m, loans) {
     return `<div class="yr"><div class="yhd"><b>${y}</b><span class="pill ${lend ? '' : 'in'}" data-tip="${lend ? 'Tiền thu hằng tháng sẽ giảm chừng này khi các khoản dưới đây kết thúc' : 'Tiền trả hằng tháng sẽ nhẹ đi chừng này khi các khoản dưới đây kết thúc'}">${lend ? 'Bớt thu' : 'Nhẹ đi'} ${short(freed)}/tháng</span></div>
       ${ls.map(({ l, sc, at }) => `<button class="yi" data-act="edit-loan" data-v="${l.id}"
         data-tip="${esc(`${l.label}\nĐáo hạn ${dLabel(sc.end)}, đã ${at.paid}/${sc.term} kỳ\n${lend ? 'Còn phải thu' : 'Còn lại'} ${money(at.state === 'future' ? l.principal : at.balance)}\nMỗi tháng ${money(usualPay(sc))}`)}">
-        <span class="nm">${esc(l.label)}</span><span class="dt">${sc.end.slice(8)}/${sc.end.slice(5, 7)}</span><span class="amt">${short(usualPay(sc))}</span></button>`).join('')}</div>`;
+        <span class="nm">${esc(dispName(l))}</span><span class="dt">${sc.end.slice(8)}/${sc.end.slice(5, 7)}</span><span class="amt">${short(usualPay(sc))}</span></button>`).join('')}</div>`;
   }).join('')}</div>`;
 }
 
@@ -941,7 +1016,7 @@ function drawBal(m) {
 
 const dueRow = ({ l, ev }) => `<button class="rw ro" data-act="edit-loan" data-v="${l.id}"
   data-tip="${esc(`${l.label}\nNgày ${[...new Set(ev.map(e => e.day))].join(', ')}, ${kindName(l)}`)}">
-  <span class="lb">${esc(l.label)}</span><span class="pill">Ngày ${ev[0].day}</span><span class="n">+${nf.format(Math.round(Math.abs(D.sum(ev, e => e.value))))}</span></button>`;
+  <span class="lb">${esc(dispName(l))}</span><span class="pill">Ngày ${ev[0].day}</span><span class="n">+${nf.format(Math.round(Math.abs(D.sum(ev, e => e.value))))}</span></button>`;
 
 function drawFrame(m, loans) {
   $('#incSum').textContent = plain(m.inflow);
@@ -1234,6 +1309,7 @@ const ACT = {
   horizon: v => { S.horizon = +v; },
   tab: v => { ui.tab = v; },
   clearf: () => { ui.cat = ui.txt = null; },
+  by: v => { ui.by = v === 'txt' ? 'txt' : 'cat'; },
   'add-income': () => { S.incomes.push({ id: uid(), label: '', amount: 0, day: 1, from: S.sel, until: S.sel }); },   // mặc định: chỉ tháng đang xem
   'add-living': () => { S.living.items.push({ id: uid(), label: '', amount: 0, from: S.sel, until: S.sel }); },
   del: (v, el) => { const id = rowId(el); S.incomes = S.incomes.filter(x => x.id !== id); S.living.items = S.living.items.filter(x => x.id !== id); },
@@ -1257,7 +1333,7 @@ const ACT = {
   preset: v => { Object.assign(draft, PRESET[v]); if (v !== 'friend' && draft.basis === 'none') draft.basis = 'flat'; paintLoan(); return false; },
   'save-loan': () => {
     const err = loanErr(draft); if (err) { $('#err').textContent = err; return false; }
-    draft.label = draft.label.trim() || (draft.dir === 'lend' ? 'Khoản cho vay' : 'Khoản vay'); delete draft.note;
+    draft.label = draft.label.trim() || (draft.dir === 'lend' ? 'Khoản cho vay' : 'Khoản vay');
     const i = S.loans.findIndex(x => x.id === draft.id); if (i < 0) S.loans.push(draft); else S.loans[i] = draft;
     ui.tab = draft.dir; dlg.close();
   },
