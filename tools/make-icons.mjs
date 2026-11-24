@@ -34,9 +34,9 @@ imgs.forEach((i, n) => {
 });
 writeFileSync(join(root, 'flowsup.ico'), Buffer.concat([head, ...imgs.map(i => i.png)]));
 
-// Favicon trong trang: Edge chọn cỡ hợp nhất cho cửa sổ app và taskbar
+// Favicon trong trang: chỉ cho thanh tiêu đề (16–32 px); taskbar lấy icon từ exe do launcher gắn
 const page = join(root, 'flowsup.html'), html = readFileSync(page, 'utf8');
-const links = imgs.filter(i => [16, 20, 24, 30, 32, 36, 40, 48, 64, 256].includes(i.px))
+const links = imgs.filter(i => [16, 20, 24, 32].includes(i.px))
   .map(i => `<link rel="icon" type="image/png" sizes="${i.px}x${i.px}" href="data:image/png;base64,${i.png.toString('base64')}">`).join('\n');
 const next = html.replace(/<!--ICONS-->[\s\S]*?<!--\/ICONS-->/, `<!--ICONS-->\n${links}\n<!--/ICONS-->`);
 if (next === html && !html.includes(links)) throw new Error('Không thấy chỗ <!--ICONS--> trong flowsup.html');
