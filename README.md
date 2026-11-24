@@ -3,7 +3,7 @@
 Khung thu, chi, trả nợ và cho vay cho máy tính Windows (trước đây là Rootcash Desktop). Nhập khung một lần, rồi xem từng tháng: ngày nào số dư xuống thấp nhất, tháng này dư ra bao nhiêu, khi nào hết nợ.
 
 ```
-Dư trong tháng = Thu + Thu hồi cho vay − Chi phí − Trả nợ
+Free float = Thu + Thu hồi cho vay − Chi phí − Trả nợ
 ```
 
 Tiền giải ngân (nhận vay, chuyển cho vay) chỉ làm đổi số dư, không tính vào dư trong tháng.
@@ -28,9 +28,9 @@ Máy cần Microsoft Edge hoặc Google Chrome. Không cần cài gì thêm.
 
 ## Ba trang
 
-- **Tháng này:** con số lớn nhất là **số dư thấp nhất trong tháng**, kèm ngày, số ngày âm và số tiền cần thêm. Bên cạnh là phép tính một dòng: số dư chốt + vào − ra = cuối tháng. Biểu đồ số dư từng ngày (xanh trên 0, cam khi âm). Danh sách **Đến hạn** theo ngày, tick **đã trả / đã thu** cho từng khoản (chỉ để đánh dấu, không đổi khung).
-- **Kế hoạch:** 6 / 12 / 24 tháng tới: cột là dư trong tháng, đường là số dư cuối tháng, nhãn "âm" cho tháng có ngày âm. Vị thế nợ: đang vay, cho vay, trả nợ tháng này, nợ ròng và tháng số dư đủ lấp. **Lịch hết nợ:** mỗi khoản một thanh dài tới ngày đáo hạn (và **Lịch thu về** cho các khoản cho vay).
-- **Dữ liệu:** chốt tháng, thu, chi phí và bảng khoản vay; bấm một khoản để sửa.
+- **Tháng này:** con số lớn nhất là **số dư thấp nhất trong tháng**, kèm ngày, số ngày âm, số tiền cần thêm, câu ngắn "âm từ ngày nào, dương lại nhờ khoản nào" và mức thấp nhất của 6 tháng tới. Bên cạnh là phép tính số dư + vào − ra = cuối tháng và Free float. Biểu đồ số dư từng ngày có vạch hôm nay. Danh sách **Đến hạn** theo ngày, gộp gốc + lãi của từng khoản; khoản đã qua ngày hiện mờ.
+- **Phân tích:** khung tháng (tiền vào = 100%, các nhóm chi, phần còn lại là Free float), chia theo Nhóm hoặc Nội dung; biểu đồ dòng chảy "Tiền đi đâu"; 6 / 12 / 24 tháng tới; vị thế nợ (nợ xoay vòng tách riêng, vốn hợp tác kinh doanh không trừ vào nợ ròng, cảnh báo khi một nguồn thu chiếm quá nửa tiền vào); lịch hết nợ theo năm.
+- **Dữ liệu thô:** số dư, thu, chi phí và bảng khoản vay, lọc theo Nhóm và Nội dung; bấm một khoản để sửa, Enter để lưu.
 
 ## Cách tính (giữ nguyên từ Rootcash)
 

@@ -160,6 +160,11 @@ svg text{font:12px var(--font);fill:var(--muted)}
 .yi .amt{text-align:right;font-weight:600;color:var(--ink);white-space:nowrap}
 .lendtab .yi .amt{color:var(--in)}
 
+.today{font-size:14px;color:var(--muted);white-space:nowrap}
+.hint{margin:4px 0 0;font-size:14px;color:var(--ink-2)}
+.it.past .nm,.it.past .amt,.dday.past{color:var(--muted)!important;opacity:.6}
+.g-today{stroke:var(--ink);stroke-width:1;stroke-dasharray:3 3} .t-today{font:12px var(--font);fill:var(--ink)}
+
 /* Nhóm */
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chips button{height:30px;padding:0 12px;border:1px solid var(--rule);background:var(--card);font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap}
@@ -699,7 +704,7 @@ const VIEWS = {
   <div class="card months">
     <div class="hd"><h2>${S.horizon} tháng tới</h2>${seg('horizon', [[6, '6'], [12, '12'], [24, '24 tháng']], S.horizon)}</div>
     <div id="proj"></div>
-    <div class="legend"><span>${sw('in-mid')}Dư trong tháng</span><span>${sw('ink')}Số dư cuối tháng</span><span>${sw('neg-soft')}Có ngày âm</span></div>
+    <div class="legend"><span>${sw('in-mid')}Free float</span><span>${sw('ink')}Số dư cuối tháng</span><span>${sw('neg-soft')}Có ngày âm</span></div>
   </div>
   <div class="posbox" id="pos"></div>
 </section>
@@ -750,6 +755,7 @@ function render() {
   <nav class="tabs" aria-label="Trang">${[['month', 'Tháng này'], ['plan', 'Phân tích'], ['data', 'Dữ liệu thô']].map(([v, t]) =>
     `<button class="tab ${ui.view === v ? 'on' : ''}" data-act="view" data-v="${v}" ${ui.view === v ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>
   <div class="grow"></div>
+  <span class="today" data-tip="Ngày hôm nay trên máy">Hôm nay ${dLabel(TODAY)}</span>
   <div class="month">
     <button class="ic" data-act="step" data-v="-1" aria-label="Tháng trước">‹</button><b id="selLabel"></b>
     <button class="ic" data-act="step" data-v="1" aria-label="Tháng sau">›</button>
@@ -784,26 +790,42 @@ function draw() {
     return { l, sc, at: D.loanAt(l, m.k, sc), lq: D.liquidity(l, sc), ev: D.loanEvents(l, m.k, sc).filter(e => e.cat === 'principal' || e.cat === 'interest' || e.cat === 'collect') };
   });
   $('#selLabel').textContent = mLong(m.k);
-  if (ui.view === 'month') { drawLow(m); drawDue(m); dayChart(m); }
+  if (ui.view === 'month') { drawLow(m, P); drawDue(m); dayChart(m); }
   else if (ui.view === 'plan') { drawCats(m, loans); drawMonths(P, m); drawPos(P, m); drawPayoff(m, loans); }
   else { drawBal(m); drawFrame(m, loans); drawLoans(m, loans); }
 }
 
 const isLend = o => o.l.dir === 'lend';
+const TODAY = D.today(), TODAY_K = TODAY.slice(0, 7), TODAY_D = +TODAY.slice(8);   // ngày máy tính, chỉ để đánh dấu, không đổi cách tính
 /* Chỉ báo lệch khi có lần chốt trước đó (tháng trước lần chốt đầu tiên chỉ là ước đoán từ 0đ, không hiện). */
 const hasDiff = m => m.diff != null && S.checks.some(c => c.date < m.check.date);
 const ddmm = (d, k) => `${D.pad(d)}/${k.slice(5)}`;
 
 /* Tháng này: số dư thấp nhất là con số lớn nhất; phép tính một dòng đầu kỳ + vào − ra = cuối tháng. */
-function drawLow(m) {
+function drawLow(m, P) {
   const negDays = m.days.filter(d => Math.round(d.end) < 0).length, lo = m.low.end;
   const pills = [`<span class="pill ${lo < 0 ? 'neg' : ''}">Ngày ${m.low.day}/${+m.k.slice(5)}</span>`,
     negDays ? `<span class="pill neg">${negDays} ngày âm</span>` : '<span class="pill in">Không có ngày âm</span>',
     lo < 0 && !m.past ? `<span class="pill" data-tip="Số tiền cần có thêm từ ${m.from > 1 ? 'ngày ' + m.from : 'đầu tháng'} để không ngày nào bị âm">Cần thêm ${short(-lo)}</span>` : '',
     hasDiff(m) ? `<span class="pill" data-tip="${esc(`Chốt ngày ${m.from}: ${money(m.check.amount)}\nKhung dự tính: ${money(m.expect)}\nLệch = chốt − dự tính`)}">Lệch chốt ${m.diff > 0 ? '+' : ''}${short(m.diff)}</span>` : '',
     m.past ? '<span class="pill">Đã qua</span>' : ''];
+  // dải ngày âm quanh ngày thấp nhất, ngày dương lại và khoản giúp dương lại
+  let hint = '';
+  if (lo < 0) {
+    const i = m.days.indexOf(m.low); let a = i, b = i;
+    while (a > 0 && m.days[a - 1].end < 0) a--;
+    while (b < m.days.length - 1 && m.days[b + 1].end < 0) b++;
+    const mm = +m.k.slice(5), from = m.days[a].day, to = m.days[b].day, next = m.days[b + 1];
+    const span = from === to ? `Âm ngày ${from}/${mm}` : `Âm từ ${from}/${mm} đến ${to}/${mm}`;
+    if (next) {
+      const best = dueItems(m).filter(e => e.day === next.day && e.value > 0).sort((x, y) => y.value - x.value)[0];
+      hint = `${span}, dương lại ngày ${next.day}/${mm}${best ? ` nhờ ${best.name} +${short(best.value)}` : ''}.`;
+    } else hint = `${span} tới hết tháng.`;
+  }
+  const ahead = (P || []).filter(x => x.k > m.k).slice(0, 6), worst = ahead.reduce((w, x) => !w || x.low.end < w.low.end ? x : w, null);
+  if (worst) pills.push(worst.low.end < 0 ? `<span class="pill neg" data-tip="Số dư thấp nhất trong 6 tháng sau tháng đang xem">6 tháng sau thấp nhất ${short(worst.low.end)} ngày ${worst.low.day}/${+worst.k.slice(5)}</span>` : '<span class="pill in">6 tháng sau không có ngày âm</span>');
   $('#low').innerHTML = `<span class="cap">${m.from > 1 ? `Thấp nhất từ ngày ${m.from}` : 'Thấp nhất trong tháng'}</span>
-    <span class="big ${negOnly(lo)}">${money(lo)}</span><div class="pills">${pills.join('')}</div>`;
+    <span class="big ${negOnly(lo)}">${money(lo)}</span><div class="pills">${pills.join('')}</div>${hint ? `<p class="hint">${esc(hint)}</p>` : ''}`;
   const vin = D.sum(m.events.filter(e => e.value > 0), e => e.value);
   const cashDays = m.dim - m.from + 1, vout = m.end - m.opening - vin;                 // ra = phần còn lại → bốn số khớp từng đồng
   const startCap = m.check ? `Chốt ${ddmm(m.from, m.k)}` : m.zero ? 'Đầu tháng, chưa chốt' : 'Đầu tháng';
@@ -812,12 +834,11 @@ function drawLow(m) {
     + fig('Vào', plain(vin), vin ? 'pos' : '', 'Thu + thu hồi cho vay + tiền vay về')
     + fig('Ra', plain(vout), vout < 0 ? 'neg' : '', `Trả nợ + chi phí ${cashDays < m.dim ? cashDays + ' ngày' : 'cả tháng'} + chuyển cho vay`)
     + fig('Cuối tháng', money(m.end), negOnly(m.end), '', 'end')
-    + fig('Dư trong tháng', plain(m.free), negOnly(m.free), 'Thu − chi phí − trả nợ, tính cả tháng.\nKhông tính tiền vay về hay chuyển cho vay.');
+    + fig('Free float', plain(m.free), negOnly(m.free), 'Thu − chi phí − trả nợ, tính cả tháng.\nKhông tính tiền vay về hay chuyển cho vay.');
   $('#dayPills').innerHTML = m.living ? `<span class="pill">Chi phí ${short(m.living / m.dim)}/ngày</span>` : '';
 }
 
-/* Đến hạn: mọi khoản rơi vào tháng, gom theo ngày; tick = đã trả / đã thu (chỉ đánh dấu, không đổi khung). */
-/* Đến hạn: mỗi khoản một dòng mỗi ngày (gốc + lãi gộp lại), chỉ ghi tên khoản. Tick = đã trả / đã thu (chỉ đánh dấu). */
+/* Đến hạn: mỗi khoản một dòng mỗi ngày (gốc + lãi gộp lại), chỉ ghi tên khoản. Khoản đã qua ngày hôm nay hiện mờ. */
 const nameOf = e => e.label.split(' · ')[0];
 function dueItems(m) {
   const map = new Map(), byId = new Map([...S.incomes, ...S.loans].map(x => [x.id, x]));
@@ -829,18 +850,14 @@ function dueItems(m) {
 }
 function drawDue(m) {
   const box = $('#dueList'), top = box.scrollTop, items = dueItems(m), days = [...new Set(items.map(e => e.day))];
-  let done = 0;
+  const passed = d => m.k < TODAY_K || (m.k === TODAY_K && d < TODAY_D);
   box.innerHTML = days.map(d => {
     const evs = items.filter(e => e.day === d), net = D.sum(evs, e => e.value);
-    return `<div class="dday"><span>${ddmm(d, m.k)}</span><span class="${negOnly(net)}">${plain(net)}</span></div>` + evs.map(e => {
-      const on = !!S.paid[e.key]; done += on;
-      const verb = e.value > 0 ? 'Đã thu' : 'Đã trả';
-      return `<div class="it ${on ? 'done' : ''}"><button class="tick ${on ? 'on' : ''}" data-act="tick" data-v="${esc(e.key)}" aria-pressed="${on}" aria-label="${verb} ${esc(e.name)}" data-tip="${verb}">✓</button>
-        <span class="nm" data-tip="${esc(e.parts.map(p => `${p.label}  ${signed(p.value)}`).join('\n'))}">${esc(e.name)}</span><span class="amt ${e.value > 0 ? 'pos' : ''}">${plain(e.value)}</span></div>`;
-    }).join('');
+    return `<div class="dday ${passed(d) ? 'past' : ''}"><span>${ddmm(d, m.k)}${m.k === TODAY_K && d === TODAY_D ? ' (hôm nay)' : ''}</span><span class="${negOnly(net)}">${plain(net)}</span></div>` + evs.map(e =>
+      `<div class="it ${passed(d) ? 'past' : ''}"><span class="nm" data-tip="${esc(e.parts.map(p => `${p.label}  ${signed(p.value)}`).join('\n'))}">${esc(e.name)}</span><span class="amt ${e.value > 0 ? 'pos' : ''}">${plain(e.value)}</span></div>`).join('');
   }).join('') || '<div class="empty" style="margin-top:12px">Không có khoản nào rơi vào tháng này.</div>';
   box.scrollTop = top;
-  $('#doneTag').textContent = items.length ? `Xong ${done}/${items.length}` : 'Trống';
+  $('#doneTag').textContent = items.length ? `${items.length} khoản` : 'Trống';
 }
 
 /* Phân tích tháng đang xem.
@@ -949,7 +966,7 @@ function drawMonths(P, m) {
   const cumName = S.carry ? 'Số dư cuối tháng' : 'Đầu tư luỹ kế';
   const col = x => {
     const tip = [mLong(x.k), `Thu ${money(x.income)}`, x.collect && `Thu hồi cho vay ${money(x.collect)}`,
-      `Chi phí ${money(-x.living)}`, `Trả gốc ${money(-x.principal)}`, `Trả lãi ${money(-x.interest)}`, `Dư trong tháng ${money(x.free)}`,
+      `Chi phí ${money(-x.living)}`, `Trả gốc ${money(-x.principal)}`, `Trả lãi ${money(-x.interest)}`, `Free float ${money(x.free)}`,
       x.loanIn && `Tiền vay về +${money(x.loanIn)}`, x.lendOut && `Chuyển cho vay ${money(-x.lendOut)}`,
       `${cumName} ${money(x.cum)}`, x.low.end < 0 && `Thấp nhất ${money(x.low.end)} ngày ${x.low.day}`].filter(Boolean).join('\n');
     const b = x.free >= 0 ? `bottom:${z}%;height:${pc(x.free) - z}%` : `bottom:${pc(x.free)}%;height:${z - pc(x.free)}%`;
@@ -968,16 +985,29 @@ function drawMonths(P, m) {
     }).join('')}</div></div>`;
 }
 
-/* Vị thế nợ cuối tháng đang xem. */
+/* Vị thế nợ cuối tháng đang xem.
+   Vốn hợp tác kinh doanh (Nội dung "Hợp tác kinh doanh") không rút về ngay được nên KHÔNG trừ vào nợ ròng.
+   Nợ xoay vòng = các khoản đi vay chưa hẹn ngày (đáo thẻ, thấu chi…): không giảm theo thời gian. */
+const isBiz = l => lkey(l.label) === 'hợp tác kinh doanh';
+const lendAt = (k, biz) => D.sum(S.loans.filter(l => l.dir === 'lend' && isBiz(l) === biz), l => { const a = D.loanAt(l, k); return a.state === 'future' ? 0 : Math.max(0, a.balance); });
 function drawPos(P, m) {
-  const p = m.pos, cover = P.find(x => x.k >= m.k && x.pos.net > 0 && x.end >= x.pos.net), last = P[P.length - 1];
-  const gap = p.net <= 0 ? '<span class="pill in">Cho vay nhiều hơn đi vay</span>'
-    : cover ? `<span class="pill in">Số dư đủ lấp từ ${mShort(cover.k)}</span>` : `<span class="pill neg">Đến ${mShort(last.k)} còn thiếu ${short(last.pos.net - last.end)}</span>`;
+  const p = m.pos, biz = lendAt(m.k, true), lend = lendAt(m.k, false), net = p.borrow - lend, last = P[P.length - 1];
+  const netAt = x => x.pos.borrow - lendAt(x.k, false), cover = P.find(x => x.k >= m.k && netAt(x) > 0 && x.end >= netAt(x));
+  const rev = S.loans.filter(l => l.dir !== 'lend' && l.open && D.loanAt(l, m.k).state !== 'future');
+  const nBiz = S.loans.filter(l => l.dir === 'lend' && isBiz(l)).length, nLend = p.nL - nBiz;
+  const ev = D.month(S, m.k, 0, 1).events, byId = new Map([...S.incomes, ...S.loans].map(x => [x.id, x]));
+  const monthly = test => D.sum(ev.filter(e => e.value > 0 && test(byId.get(e.id))), e => e.value);
+  const src = new Map(); for (const e of ev) if (e.value > 0) { const c = catOf(byId.get(e.id)); src.set(c, (src.get(c) || 0) + e.value); }
+  const top = [...src].sort((x, y) => y[1] - x[1])[0], share = top && m.inflow ? top[1] / m.inflow : 0;
+  const gap = net <= 0 ? '<span class="pill in">Cho vay nhiều hơn đi vay</span>'
+    : cover ? `<span class="pill in">Số dư đủ lấp từ ${mShort(cover.k)}</span>` : `<span class="pill neg">Đến ${mShort(last.k)} còn thiếu ${short(netAt(last) - last.end)}</span>`;
   const f = (cap, val, c = '', tip = '') => `<div class="pf" ${tip ? `data-tip="${esc(tip)}"` : ''}><span class="cap">${cap}</span><span class="n ${c}">${val}</span></div>`;
-  $('#pos').innerHTML = f(`Đang vay, ${p.nB} khoản`, money(p.borrow), '', `Lãi còn phải trả ${money(p.intPay)}`)
-    + f(`Cho vay, ${p.nL} khoản`, money(p.lend), p.lend ? 'pos' : '', `Lãi sẽ thu ${money(p.intGet)}`)
+  $('#pos').innerHTML = f(`Đang vay, ${p.nB} khoản`, money(p.borrow), '', `Lãi còn phải trả (khoản có hạn) ${money(p.intPay)}`)
+    + (rev.length ? f(`Trong đó nợ xoay vòng, ${rev.length} khoản`, money(D.sum(rev, l => l.principal)), '', 'Đáo thẻ, thấu chi và các khoản chưa hẹn ngày: không giảm theo thời gian, chỉ trả phí hoặc lãi hằng tháng') : '')
+    + (nLend > 0 ? f(`Cho vay, ${nLend} khoản`, money(lend), lend ? 'pos' : '', `Thu mỗi tháng ${money(monthly(x => x?.dir === 'lend' && !isBiz(x)))}`) : '')
+    + (nBiz > 0 ? f(`Vốn hợp tác, ${nBiz} khoản`, money(biz), 'pos', `Lợi nhuận mỗi tháng ${money(monthly(x => x && isBiz(x)))}\nKhông trừ vào nợ ròng vì không rút về ngay được`) : '')
     + f(`Trả nợ ${mShort(m.k)}`, money(m.debt), '', `Gốc ${money(m.principal)}\nLãi ${money(m.interest)}\nBằng ${m.inflow ? dec(m.debt / m.inflow * 100, 0) : '—'}% tiền vào`)
-    + `<div class="pf main"><span class="cap">Nợ ròng cuối ${mShort(m.k)}</span><span class="n">${money(p.net)}</span>${gap}</div>`;
+    + `<div class="pf main"><span class="cap">Nợ ròng cuối ${mShort(m.k)}</span><span class="n">${money(net)}</span>${gap}${share >= .5 ? `<span class="pill neg" data-tip="Nguồn này chậm thì tiền vào giảm tương ứng, trong khi nợ vẫn phải trả">${esc(top[0])} chiếm ${dec(share * 100, 0)}% tiền vào</span>` : ''}</div>`;
 }
 
 /* Lịch hết nợ / thu về: gom theo năm. Mỗi năm một ô: các khoản xong trong năm đó, ngày xong,
@@ -987,7 +1017,7 @@ function drawPayoff(m, loans) {
   const lend = ui.tab === 'lend', list = loans.filter(o => isLend(o) === lend);
   const open = list.filter(o => o.l.open && o.at.state !== 'done' && inFilt(o.l)), live = list.filter(o => !o.l.open && o.at.state !== 'done' && inFilt(o.l))
     .sort((a, b) => a.sc.end < b.sc.end ? -1 : a.sc.end > b.sc.end ? 1 : 0);
-  $('#openPill').innerHTML = open.length ? `<span class="pill" data-tip="${esc(open.map(o => `${o.l.label}  ${money(o.l.principal)}`).join('\n'))}">Chưa hẹn ngày: ${open.length} khoản, ${short(D.sum(open, o => o.l.principal))}</span>` : '';
+  $('#openPill').innerHTML = open.length ? `<span class="pill" data-tip="${esc(open.map(o => `${o.l.label}  ${money(o.l.principal)}`).join('\n'))}">${lend ? 'Chưa hẹn ngày' : 'Chưa tính nợ xoay vòng'}: ${open.length} khoản, ${short(D.sum(open, o => o.l.principal))}</span>` : '';
   if (!live.length) return $('#payoff').innerHTML = `<div class="empty">${lend ? 'Không có khoản cho vay nào đang chạy.' : 'Không có khoản vay nào đang chạy.'}</div>`;
   const years = [...new Set(live.map(o => o.sc.end.slice(0, 4)))];
   $('#payoff').innerHTML = `<div class="yrs">${years.map(y => {
@@ -1094,6 +1124,7 @@ function dayChart(m) {
     ${grid}<line class="g-zero" x1="${l}" x2="${W - r}" y1="${y0}" y2="${y0}"/><text x="${l - 8}" y="${y0 + 4}" text-anchor="end">0</text>
     ${part('up', 'up')}${part('dn', 'dn')}${dots}
     <circle class="d-low ${m.low.end < 0 ? '' : 'ok'}" cx="${x(m.low.day)}" cy="${y(m.low.end)}" r="5"/>
+    ${m.k === TODAY_K && TODAY_D >= m.from ? `<line class="g-today" x1="${x(TODAY_D)}" x2="${x(TODAY_D)}" y1="${t}" y2="${H - b}"/><text x="${x(TODAY_D) + 4}" y="${t + 12}" class="t-today">Hôm nay</text>` : ''}
     ${ticks}${hover}`;
 }
 
