@@ -1,6 +1,6 @@
 # Flowsup
 
-Khung thu, chi, trả nợ và cho vay cho máy tính Windows (trước đây là Rootcash Desktop). Nhập khung một lần, rồi xem từng tháng: ngày nào số dư xuống thấp nhất, tháng này dư ra bao nhiêu, khi nào hết nợ.
+Khung thu, chi, trả nợ và cho vay cho máy tính Windows. Nhập khung một lần, rồi xem từng tháng: ngày nào số dư xuống thấp nhất, tháng này dư ra bao nhiêu, khi nào hết nợ.
 
 ```
 Free float = Thu + Thu hồi cho vay − Chi phí − Trả nợ
@@ -16,8 +16,6 @@ Tiền giải ngân (nhận vay, chuyển cho vay) chỉ làm đổi số dư, k
 
 Máy cần Microsoft Edge hoặc Google Chrome. Không cần cài gì thêm.
 
-**Chuyển từ Rootcash:** lần đầu mở, `Flowsup.exe` tự chép bản tự lưu cũ (`Documents\Rootcash\rootcash-latest.json`) sang `Documents\Flowsup` và nạp vào app. File xuất cũ của Rootcash vẫn nhập được bằng **⋯ › Nhập file**.
-
 ## Local only
 
 - **Không máy chủ ngoài, không tài khoản.** App không gửi số liệu đi đâu và không tải gì từ mạng (dùng font của Windows).
@@ -32,7 +30,7 @@ Máy cần Microsoft Edge hoặc Google Chrome. Không cần cài gì thêm.
 - **Phân tích:** khung tháng (tiền vào = 100%, các nhóm chi, phần còn lại là Free float), chia theo Nhóm hoặc Nội dung; biểu đồ dòng chảy "Tiền đi đâu"; 6 / 12 / 24 tháng tới; vị thế nợ (nợ xoay vòng tách riêng, vốn hợp tác kinh doanh không trừ vào nợ ròng, cảnh báo khi một nguồn thu chiếm quá nửa tiền vào); lịch hết nợ theo năm.
 - **Dữ liệu thô:** số dư, thu, chi phí và bảng khoản vay, lọc theo Nhóm và Nội dung; bấm một khoản để sửa, Enter để lưu.
 
-## Cách tính (giữ nguyên từ Rootcash)
+## Cách tính
 
 - **Chốt tháng:** mỗi tháng giữ một số dư chốt riêng (số tiền + ngày). Chốt tháng sau không ghi đè tháng trước. Tiền mặt chạy tiếp từ ngày chốt; app so với khung dự tính và báo **lệch**.
 - **Thu** và **Chi phí:** Hàng tháng / Chỉ một tháng / Khoảng tháng. Thu có ngày tiền về; chi phí trải đều theo ngày.
@@ -54,8 +52,6 @@ Máy cần Microsoft Edge hoặc Google Chrome. Không cần cài gì thêm.
 | `tools/make-icons.mjs` | Vẽ logo flow / sup ở mọi cỡ (16 → 256 px) bằng Edge, ghép `flowsup.ico` và favicon trong trang. |
 | `tests/` | Kiểm tra phần tính toán (chèn vào bản sao của trang, mở bằng Edge). |
 | `Flowsup.cmd` | Trình mở dự phòng (không tự lưu). `Flowsup.cmd shortcut` tạo lối tắt trên Desktop. |
-
-Flowsup vẫn nhập được file sao lưu của bản Rootcash webapp cũ.
 
 ---
 

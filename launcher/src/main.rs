@@ -3,8 +3,7 @@
 // 2. Tự lưu: máy chủ nhỏ chỉ nghe 127.0.0.1:47613, nhận bản JSON từ trang và ghi vào Documents\Flowsup
 //    (flowsup-latest.json + backups\flowsup-YYYY-MM-DD.json, giữ 60 bản). Mọi yêu cầu phải kèm mã khoá k
 //    do exe sinh mỗi lần chạy và chỉ truyền cho trang qua #k=…, nên trang web khác không đọc/ghi được.
-// 3. Lần đầu chạy: chép bản tự lưu cũ của Rootcash (Documents\Rootcash\rootcash-latest.json) sang Flowsup.
-// 4. Exe chạy ngầm (≈1 MB RAM) tới khi cửa sổ Flowsup đóng.
+// 3. Exe chạy ngầm (≈1 MB RAM) tới khi cửa sổ Flowsup đóng.
 #![windows_subsystem = "windows"]
 
 use std::ffi::OsString;
@@ -194,7 +193,7 @@ fn handle(mut s: TcpStream, ctx: &Ctx) {
     let latest = ctx.data.join("flowsup-latest.json");
     if method == "POST" && path == "/save" {
         let json = String::from_utf8_lossy(&body);
-        if !json.trim_start().starts_with('{') || !json.contains("\"rootcash-desktop\"") { return reply(&mut s, 400, b"{\"ok\":false}"); }
+        if !json.trim_start().starts_with('{') || !json.contains("\"format\": \"flowsup\"") { return reply(&mut s, 400, b"{\"ok\":false}"); }
         let ok = {
             let _g = ctx.lock.lock().unwrap_or_else(|e| e.into_inner());
             let bdir = ctx.data.join("backups");
@@ -222,14 +221,6 @@ fn prune(bdir: &Path) {
     for old in v.into_iter().skip(60) { let _ = fs::remove_file(old); }
 }
 
-/// Lần đầu: mang bản tự lưu của Rootcash sang Flowsup để mở lên đã có dữ liệu.
-fn migrate(data: &Path) {
-    let latest = data.join("flowsup-latest.json");
-    if latest.exists() { return; }
-    let old = documents().join("Rootcash").join("rootcash-latest.json");
-    if old.is_file() && fs::create_dir_all(data).is_ok() { let _ = fs::copy(old, latest); }
-}
-
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let test = args.get(1).map_or(false, |a| a == "--test");                           // --test <thư mục>: chỉ chạy máy chủ 90 giây
@@ -238,7 +229,6 @@ fn main() {
     let profile = local.join("window");
     let data = if test { PathBuf::from(args.get(2).cloned().unwrap_or_else(|| ".".into())) } else { documents().join(APP) };
     let token_file = local.join(if test { "token-test" } else { "token" });
-    if !test { migrate(&data); }
 
     let server = TcpListener::bind((Ipv4Addr::LOCALHOST, PORT)).ok();
     let token = if server.is_some() {
