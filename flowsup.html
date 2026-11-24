@@ -165,6 +165,17 @@ svg text{font:12px var(--font);fill:var(--muted)}
 .it.past .nm,.it.past .amt,.dday.past{color:var(--muted)!important;opacity:.6}
 .g-today{stroke:var(--ink);stroke-width:1;stroke-dasharray:3 3} .t-today{font:12px var(--font);fill:var(--ink)}
 
+.bridge{display:flex;flex-direction:column}
+.br{display:flex;justify-content:space-between;align-items:baseline;gap:4px 12px;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--rule)}
+.br .cap{display:flex;flex-direction:column;gap:2px;white-space:normal}
+.br .cap small{font-size:12px;color:var(--muted)}
+.br .n{font:600 19px/1.2 var(--font-d);color:var(--ink);white-space:nowrap}
+.br.op .n{color:var(--in)}
+.br.tot{border-top:1px solid var(--ink)} .br.tot .cap{color:var(--ink);font-weight:600} .br.tot .n{font-weight:700}
+.br.main{flex-direction:column;align-items:flex-start;gap:6px;border:1px solid var(--rule);padding:16px;margin:14px 0 10px;background:var(--paper-2)}
+.br.main .n{font-size:30px;font-weight:700} .br.main.bad .n{color:var(--neg)} .br.main.good .n{color:var(--in)}
+.br.main small{font-size:13px;color:var(--ink-2)}
+
 /* Nhóm */
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chips button{height:30px;padding:0 12px;border:1px solid var(--rule);background:var(--card);font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap}
@@ -539,7 +550,7 @@ function norm(r) {                                                              
   const label = x => String(x?.label ?? '').slice(0, 120), id = x => String(x?.id || uid());
   if (D.dOK(r.openDate)) s.openDate = r.openDate; else if (D.mOK(r.start)) s.openDate = r.start + '-01';
   s.start = s.openDate.slice(0, 7);
-  s.horizon = pick(+r.horizon, [12, 6, 24]); s.opening = int(r.opening, -1e13); s.carry = true;                                   // bỏ lựa chọn Đem đầu tư: dư trong tháng luôn cộng dồn
+  s.horizon = pick(+r.horizon, [12, 6, 24]); s.opening = int(r.opening, -1e13); s.carry = true; s.savedAt = typeof r.savedAt === 'string' && !isNaN(Date.parse(r.savedAt)) ? r.savedAt : '';                                   // bỏ lựa chọn Đem đầu tư: dư trong tháng luôn cộng dồn
   const byMonth = new Map((Array.isArray(r.checks) ? r.checks : []).filter(c => D.dOK(c?.date))
     .map(c => [c.date.slice(0, 7), { date: c.date, amount: int(c.amount, -1e13) }]));       // mỗi tháng một lần chốt
   if (!byMonth.size) byMonth.set(s.openDate.slice(0, 7), { date: s.openDate, amount: s.opening });
@@ -601,6 +612,7 @@ const toast = t => { $('#toast').textContent = t; clearTimeout(toastTimer); toas
 try { const raw = localStorage.getItem(KEY); if (raw) S = norm(JSON.parse(raw)); } catch { loadErr = 'Không đọc được dữ liệu đã lưu.'; }
 function save() {
   if (loadErr) return;                                                              // không ghi đè lên dữ liệu chưa đọc được
+  S.savedAt = new Date().toISOString();                                             // thời điểm sửa gần nhất, để so với bản trên đĩa
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch { toast('Không lưu được. Hãy Xuất file để giữ dữ liệu.'); }
   autoSave();
 }
@@ -991,23 +1003,40 @@ function drawMonths(P, m) {
 const isBiz = l => lkey(l.label) === 'hợp tác kinh doanh';
 const lendAt = (k, biz) => D.sum(S.loans.filter(l => l.dir === 'lend' && isBiz(l) === biz), l => { const a = D.loanAt(l, k); return a.state === 'future' ? 0 : Math.max(0, a.balance); });
 function drawPos(P, m) {
-  const p = m.pos, biz = lendAt(m.k, true), lend = lendAt(m.k, false), net = p.borrow - lend, last = P[P.length - 1];
-  const netAt = x => x.pos.borrow - lendAt(x.k, false), cover = P.find(x => x.k >= m.k && netAt(x) > 0 && x.end >= netAt(x));
-  const rev = S.loans.filter(l => l.dir !== 'lend' && l.open && D.loanAt(l, m.k).state !== 'future');
-  const nBiz = S.loans.filter(l => l.dir === 'lend' && isBiz(l)).length, nLend = p.nL - nBiz;
-  const ev = D.month(S, m.k, 0, 1).events, byId = new Map([...S.incomes, ...S.loans].map(x => [x.id, x]));
-  const monthly = test => D.sum(ev.filter(e => e.value > 0 && test(byId.get(e.id))), e => e.value);
-  const src = new Map(); for (const e of ev) if (e.value > 0) { const c = catOf(byId.get(e.id)); src.set(c, (src.get(c) || 0) + e.value); }
+  /* Cầu trừ dần: Đang vay − cho vay thu lại = Nợ ròng − rút vốn hợp tác − tiền mặt cuối tháng = Gap nếu thu hết.
+     Ước lượng thời gian lấp gap: dồn Free float các tháng sau, trừ lợi nhuận hợp tác (vì vốn đã rút). */
+  const p = m.pos, biz = lendAt(m.k, true), lend = lendAt(m.k, false), net = p.borrow - lend, cash = m.end, gap = net - biz - cash;
+  const rev = S.loans.filter(l => l.dir !== 'lend' && l.open && D.loanAt(l, m.k).state !== 'future'), revSum = D.sum(rev, l => l.principal);
+  const nBiz = S.loans.filter(l => l.dir === 'lend' && isBiz(l) && D.loanAt(l, m.k).state !== 'future').length, nLend = p.nL - nBiz;
+  const byId = new Map([...S.incomes, ...S.loans].map(x => [x.id, x]));
+  const inflowOf = (k, test) => D.sum(D.month(S, k, 0, 1).events.filter(e => e.value > 0 && test(byId.get(e.id))), e => e.value);
+  const src = new Map(); for (const e of D.month(S, m.k, 0, 1).events) if (e.value > 0) { const c = catOf(byId.get(e.id)); src.set(c, (src.get(c) || 0) + e.value); }
   const top = [...src].sort((x, y) => y[1] - x[1])[0], share = top && m.inflow ? top[1] / m.inflow : 0;
-  const gap = net <= 0 ? '<span class="pill in">Cho vay nhiều hơn đi vay</span>'
-    : cover ? `<span class="pill in">Số dư đủ lấp từ ${mShort(cover.k)}</span>` : `<span class="pill neg">Đến ${mShort(last.k)} còn thiếu ${short(netAt(last) - last.end)}</span>`;
-  const f = (cap, val, c = '', tip = '') => `<div class="pf" ${tip ? `data-tip="${esc(tip)}"` : ''}><span class="cap">${cap}</span><span class="n ${c}">${val}</span></div>`;
-  $('#pos').innerHTML = f(`Đang vay, ${p.nB} khoản`, money(p.borrow), '', `Lãi còn phải trả (khoản có hạn) ${money(p.intPay)}`)
-    + (rev.length ? f(`Trong đó nợ xoay vòng, ${rev.length} khoản`, money(D.sum(rev, l => l.principal)), '', 'Đáo thẻ, thấu chi và các khoản chưa hẹn ngày: không giảm theo thời gian, chỉ trả phí hoặc lãi hằng tháng') : '')
-    + (nLend > 0 ? f(`Cho vay, ${nLend} khoản`, money(lend), lend ? 'pos' : '', `Thu mỗi tháng ${money(monthly(x => x?.dir === 'lend' && !isBiz(x)))}`) : '')
-    + (nBiz > 0 ? f(`Vốn hợp tác, ${nBiz} khoản`, money(biz), 'pos', `Lợi nhuận mỗi tháng ${money(monthly(x => x && isBiz(x)))}\nKhông trừ vào nợ ròng vì không rút về ngay được`) : '')
-    + f(`Trả nợ ${mShort(m.k)}`, money(m.debt), '', `Gốc ${money(m.principal)}\nLãi ${money(m.interest)}\nBằng ${m.inflow ? dec(m.debt / m.inflow * 100, 0) : '—'}% tiền vào`)
-    + `<div class="pf main"><span class="cap">Nợ ròng cuối ${mShort(m.k)}</span><span class="n">${money(net)}</span>${gap}${share >= .5 ? `<span class="pill neg" data-tip="Nguồn này chậm thì tiền vào giảm tương ứng, trong khi nợ vẫn phải trả">${esc(top[0])} chiếm ${dec(share * 100, 0)}% tiền vào</span>` : ''}</div>`;
+  // bao lâu lấp được gap: sau khi thu hết và trả nợ, không còn trả góp nhưng cũng mất lãi và lợi nhuận thu về;
+  // phần còn lại mỗi tháng = thu nhập thường (lương…) − chi phí.
+  let fill = '', fillTip = '';
+  if (gap > 0) {
+    const after = P.filter(x => x.k > m.k), per = after.map(x => x.income - x.living);
+    const avg = per.length ? D.sum(per, v => v) / per.length : 0;
+    let left = gap, k = null;
+    for (let i = 0; i < after.length; i++) { left -= per[i]; if (left <= 0) { k = after[i].k; break; } }
+    if (k) fill = `Lấp bằng thu nhập còn lại trong khoảng ${D.diff(m.k, k)} tháng (${mShort(k)})`;
+    else if (avg > 0) fill = `Mỗi tháng dư khoảng ${short(avg)}: cần khoảng ${Math.ceil(gap / avg)} tháng để lấp`;
+    else fill = `Thu nhập còn lại không đủ chi phí (${short(avg)}/tháng): gap không tự lấp được`;
+    fillTip = 'Giả định đã thu hết và trả nợ: không còn trả góp, nhưng cũng không còn lãi cho vay và lợi nhuận hợp tác. Mỗi tháng còn: thu nhập thường − chi phí.';
+  }
+  const row = (cap, val, cls = '', tip = '', sub = '') => `<div class="br ${cls}" ${tip ? `data-tip="${esc(tip)}"` : ''}><span class="cap">${cap}${sub ? `<small>${sub}</small>` : ''}</span><span class="n">${val}</span></div>`;
+  const minus = v => '−' + nf.format(Math.round(Math.abs(v))) + 'đ';
+  $('#pos').innerHTML = `<div class="bridge">
+    ${row(`Đang vay, ${p.nB} khoản`, money(p.borrow), '', `Lãi còn phải trả (khoản có hạn) ${money(p.intPay)}`, rev.length ? `Có hạn ${short(p.borrow - revSum)}, xoay vòng ${short(revSum)} (${rev.length} khoản, không tự giảm)` : '')}
+    ${nLend > 0 ? row(`Cho vay thu lại, ${nLend} khoản`, minus(lend), 'op', `Thu mỗi tháng ${money(inflowOf(m.k, x => x?.dir === 'lend' && !isBiz(x)))}`) : ''}
+    ${row(`Nợ ròng cuối ${mShort(m.k)}`, money(net), 'tot', 'Nợ thật nếu vẫn giữ vốn trong hợp tác kinh doanh')}
+    ${nBiz > 0 ? row(`Rút vốn hợp tác, ${nBiz} khoản`, minus(biz), 'op', `Lợi nhuận mỗi tháng ${money(inflowOf(m.k, x => x && isBiz(x)))}, sẽ mất khi rút vốn`) : ''}
+    ${row(`Tiền mặt cuối ${mShort(m.k)}`, cash >= 0 ? minus(cash) : '+' + nf.format(Math.round(-cash)) + 'đ', 'op', 'Số dư dự kiến cuối tháng, dùng để trả nợ')}
+    <div class="br main ${gap > 0 ? 'bad' : 'good'}"><span class="cap">${gap > 0 ? 'Gap nếu thu hết' : 'Thu hết thì đủ trả hết nợ'}</span><span class="n">${gap > 0 ? money(gap) : 'Dư ' + money(-gap)}</span>
+      ${fill ? `<small data-tip="${esc(fillTip)}">${fill}</small>` : ''}</div>
+    ${share >= .5 ? `<span class="pill neg" data-tip="Nguồn này chậm thì tiền vào giảm tương ứng, trong khi nợ vẫn phải trả">${esc(top[0])} chiếm ${dec(share * 100, 0)}% tiền vào</span>` : ''}
+  </div>`;
 }
 
 /* Lịch hết nợ / thu về: gom theo năm. Mỗi năm một ô: các khoản xong trong năm đó, ngày xong,
@@ -1423,11 +1452,31 @@ document.addEventListener('mousemove', e => {
 document.addEventListener('scroll', () => tip.textContent = '', { capture: true, passive: true });
 render();
 /* Mở lên mà app trống (máy mới, hồ sơ bị xoá…) → tự lấy lại bản tự lưu gần nhất; ngược lại lưu ngay một bản. */
+/* Mở lên: so dữ liệu trong app với bản tự lưu trên đĩa, KHÔNG bao giờ ghi đè bản mới hơn.
+   • App trống → nạp bản trên đĩa.
+   • Cả hai có thời điểm lưu → bản mới hơn thắng.
+   • Không rõ (dữ liệu cũ chưa có thời điểm) mà nội dung khác nhau → hỏi người dùng. */
 if (AUTO) (async () => {
-  if (isEmpty() && !loadErr) try {
-    const r = await fetch(autoUrl('latest'));
-    if (r.ok) { const raw = await r.json(); if (raw?.data) { S = norm(raw.data); save(); render(); toast('Đã khôi phục từ bản tự lưu gần nhất.'); return; } }
-  } catch {}
+  let raw = null;
+  try { const r = await fetch(autoUrl('latest')); if (r.ok) raw = await r.json(); } catch {}
+  if (loadErr) return;
+  const disk = raw?.data ? norm(raw.data) : null;
+  if (disk) {
+    const same = JSON.stringify({ ...disk, savedAt: 0, sel: 0 }) === JSON.stringify({ ...S, savedAt: 0, sel: 0 });
+    const ts = v => (v && Date.parse(v)) || 0, dt = ts(raw.data.savedAt) || ts(raw.exportedAt), lt = ts(S.savedAt);
+    const when = t => t ? new Date(t).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : 'không rõ';
+    let useDisk = false; const wasEmpty = isEmpty();
+    if (wasEmpty) useDisk = true;
+    else if (!same) {
+      if (lt && dt) useDisk = dt > lt;
+      else useDisk = confirm(`Bản tự lưu trên máy (lưu lúc ${when(dt)}) khác dữ liệu đang có trong app (${lt ? 'sửa lúc ' + when(lt) : 'không rõ thời điểm'}).
+
+OK: dùng bản tự lưu trên máy.
+Huỷ: giữ dữ liệu trong app và lưu đè lên bản trên máy.`);
+    }
+    if (useDisk) { S = disk; localStorage.setItem(KEY, JSON.stringify(S)); render(); toast(wasEmpty ? 'Đã khôi phục từ bản tự lưu.' : 'Đã nạp bản tự lưu mới hơn trên máy.'); return; }
+    if (same) return;                                                               // đã khớp, không cần ghi lại
+  }
   autoSave(true);
 })();
 })();
